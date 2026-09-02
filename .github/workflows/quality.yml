@@ -1,0 +1,43 @@
+name: LineLess Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Static checks
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate CloudFormation syntax
+        run: node -e "const fs=require('fs'); const yaml=require('js-yaml'); yaml.load(fs.readFileSync('infrastructure/lineless.yaml','utf8')); console.log('CloudFormation YAML parsed successfully')"
