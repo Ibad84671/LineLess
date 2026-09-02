@@ -8,11 +8,11 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "test": "node --test tests/unit tests/integration tests/infra tests/websocket",
-    "test:unit": "node --test tests/unit",
-    "test:integration": "node --test tests/integration",
-    "test:infra": "node --test tests/infra",
-    "test:websocket": "node --test tests/websocket",
+    "test": "node --test \"tests/unit/*.test.mjs\" \"tests/integration/*.test.mjs\" \"tests/infra/*.test.mjs\" \"tests/websocket/*.test.mjs\"",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
+    "test:integration": "node --test \"tests/integration/*.test.mjs\"",
+    "test:infra": "node --test \"tests/infra/*.test.mjs\"",
+    "test:websocket": "node --test \"tests/websocket/*.test.mjs\"",
     "lint": "eslint backend frontend tests scripts",
     "check": "node scripts/static-checks.js",
     "build": "node scripts/build.js",

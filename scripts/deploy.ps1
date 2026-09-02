@@ -72,13 +72,6 @@ aws s3 cp dist/lambda.zip "s3://$ArtifactBucket/$CodeKey" | Out-Null
 Step 'Determining stack state'
 $stackJson = aws cloudformation describe-stacks --stack-name $StackName --region $Region --output json 2>$null
 $stackExists = ($LASTEXITCODE -eq 0)
-$AllowedOrigins = ''
-if ($stackExists) {
-  $stack = ($stackJson | ConvertFrom-Json).Stacks[0]
-  if ($stack.StackStatus -like '*IN_PROGRESS*') { Fail "stack $StackName is busy ($($stack.StackStatus))" }
-  $originOutput = $stack.Outputs | Where-Object { $_.OutputKey -eq 'CloudFrontURL' }
-  if ($originOutput) { $AllowedOrigins = $originOutput.OutputValue }
-}
 
 $CfnDeployArgs = @(
   '--stack-name', $StackName,
@@ -89,13 +82,12 @@ $CfnDeployArgs = @(
   "LambdaCodeKey=$CodeKey",
   "SenderEmail=$SenderEmail",
   "EnableSmsNotifications=$(if ($EnableSmsNotifications) {'true'} else {'false'})",
-  "AllowedOrigins=$AllowedOrigins",
   '--capabilities', 'CAPABILITY_NAMED_IAM',
   '--region', $Region
 )
 
 if (-not $stackExists) {
-  Step "Creating stack $StackName (first pass — CORS origin filled in afterwards)"
+  Step "Creating stack $StackName"
   aws cloudformation deploy @CfnDeployArgs
   if ($LASTEXITCODE -ne 0) { Fail 'stack creation failed' }
 } else {
@@ -112,27 +104,6 @@ $out = @{}
 foreach ($o in $stack.Outputs) { $out[$o.OutputKey] = $o.OutputValue }
 $CloudFrontUrl = $out['CloudFrontURL']
 if (-not $CloudFrontUrl) { Fail 'CloudFrontURL output missing' }
-
-# First-deploy second pass: fill CORS origin now that the CloudFront URL is known.
-if (-not $AllowedOrigins) {
-  Step 'Second pass: wiring CORS origin to the CloudFront URL'
-  aws cloudformation deploy `
-    --stack-name $StackName `
-    --template-file infrastructure/lineless.yaml `
-    --parameter-overrides `
-      "Environment=$Environment" `
-      "LambdaCodeBucket=$ArtifactBucket" `
-      "LambdaCodeKey=$CodeKey" `
-      "SenderEmail=$SenderEmail" `
-      "EnableSmsNotifications=$(if ($EnableSmsNotifications) {'true'} else {'false'})" `
-      "AllowedOrigins=$CloudFrontUrl" `
-    --capabilities CAPABILITY_NAMED_IAM `
-    --region $Region
-  if ($LASTEXITCODE -ne 0) { Fail 'CORS second-pass update failed' }
-  $stack = (aws cloudformation describe-stacks --stack-name $StackName --region $Region --output json | ConvertFrom-Json).Stacks[0]
-  $out = @{}
-  foreach ($o in $stack.Outputs) { $out[$o.OutputKey] = $o.OutputValue }
-}
 
 # ---- 8. Build + upload frontend ---------------------------------------------------
 Step 'Building frontend with deployed configuration'

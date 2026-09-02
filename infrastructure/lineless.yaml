@@ -11,10 +11,6 @@ Parameters:
     Default: dev
     AllowedValues: [dev, staging, prod]
     Description: Deployment environment (used in resource names).
-  AllowedOrigins:
-    Type: CommaDelimitedList
-    Default: ""
-    Description: Extra CORS origins for the HTTP API (the CloudFront origin is always allowed). Dev origins localhost:5173 are always allowed.
   SenderEmail:
     Type: String
     Default: ""
@@ -165,7 +161,7 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:BatchGetItem
                   - dynamodb:ConditionCheckItem
-                  - dynamodb:transactWriteItems
+                  - dynamodb:TransactWriteItems
                 Resource:
                   - !GetAtt MainTable.Arn
                   - !Sub "${MainTable.Arn}/index/*"
@@ -461,7 +457,7 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                   - dynamodb:Query
-                  - dynamodb:transactWriteItems
+                  - dynamodb:TransactWriteItems
                 Resource:
                   - !GetAtt MainTable.Arn
                   - !Sub "${MainTable.Arn}/index/*"
