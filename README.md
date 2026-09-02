@@ -2,9 +2,9 @@
 
 > **Join the Queue. Skip the Wait.**
 
-LineLess is a real-time, serverless virtual queue platform for businesses that need to replace physical waiting lines with a live digital experience.
+LineLess is a real-time, serverless virtual queue platform for businesses that want to replace physical waiting lines with a live digital experience.
 
-Customers can join a queue remotely, keep their place on their phone, see live movement and estimated wait time, and receive turn notifications. Staff get a fast queue console for calling, skipping, recalling, pausing, resuming, and closing queues.
+Customers can join remotely, keep their place on their phone, see live movement and estimated wait time, and receive turn notifications. Staff get a fast queue console for calling, skipping, recalling, pausing, resuming, and closing queues.
 
 [![Tests](https://img.shields.io/badge/tests-58%2F58%20passing-0A0A0A?style=for-the-badge)](https://github.com/Ibad84671/LineLess/actions)
 [![AWS](https://img.shields.io/badge/AWS-serverless-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/serverless/)
@@ -46,7 +46,7 @@ No refresh button. No clipboard. No guessing.
 - See people ahead and estimated wait
 - Follow live queue movement through WebSocket updates
 - Leave the queue when plans change
-- Get notification events through the asynchronous notification pipeline
+- Receive asynchronous notification events
 
 ### Staff
 
@@ -55,8 +55,8 @@ No refresh button. No clipboard. No guessing.
 - Call next customer
 - Skip and recall customers
 - Pause, resume, and close queues
-- View queue and service analytics
-- Manage organization/branch/service data according to role
+- View queue/service analytics
+- Manage organization, branch, and service data according to role
 
 ### Display / Reception
 
@@ -66,67 +66,119 @@ No refresh button. No clipboard. No guessing.
 
 ---
 
-## Architecture
+# Architecture
 
-```text
-                         ┌──────────────────────┐
-                         │      Customers       │
-                         │  Mobile / Browser    │
-                         └──────────┬───────────┘
-                                    │ HTTPS
-                                    ▼
-┌──────────────────┐       ┌──────────────────────┐
-│ CloudFront + S3  │──────▶│   API Gateway REST  │
-│ Private frontend │       └──────────┬───────────┘
-└──────────────────┘                  │
-                                      ▼
-                              ┌───────────────┐
-                              │  API Lambda   │
-                              └───────┬───────┘
-                                      │
-                     ┌────────────────┼────────────────┐
-                     ▼                ▼                ▼
-                ┌─────────┐     ┌────────────┐   ┌────────────┐
-                │DynamoDB │     │ EventBridge│   │  Cognito   │
-                │  State  │     │   Events   │   │   Staff    │
-                └────┬────┘     └─────┬──────┘   └────────────┘
-                     │                │
-                     │                ▼
-                     │          ┌───────────┐
-                     │          │    SQS    │
-                     │          │ + retries │
-                     │          └─────┬─────┘
-                     │                ▼
-                     │        ┌─────────────────┐
-                     │        │ Notification   │
-                     │        │     Lambda     │
-                     │        └───────┬─────────┘
-                     │                ▼
-                     │          SES / SNS
-                     │
-                     ▼
-              ┌───────────────┐
-              │ WebSocket API │
-              └───────┬───────┘
-                      ▼
-              ┌───────────────┐
-              │ Broadcaster   │
-              │ + connections │
-              └───────────────┘
+LineLess uses a serverless, event-driven architecture. The queue mutation path stays focused on correctness while notifications and real-time fan-out are decoupled through events.
+
+## High-Level AWS Architecture
+
+```mermaid
+flowchart TB
+    U[Customers / Staff / Display] --> CF[Amazon CloudFront]
+    CF --> S3[(Private S3 Frontend)]
+
+    U --> API[API Gateway REST API]
+    API --> L[API Lambda]
+    L --> DDB[(DynamoDB<br/>Queue + Tenant State)]
+    L --> EB[Amazon EventBridge]
+
+    U -. Live connection .-> WS[API Gateway WebSocket API]
+    WS --> WSL[WebSocket Lambda]
+    WSL --> CON[(DynamoDB<br/>Connections)]
+
+    EB --> B[Broadcast Lambda]
+    B --> WS
+
+    EB --> SQS[Amazon SQS]
+    SQS --> N[Notification Lambda]
+    N --> SES[Amazon SES]
+    N --> SNS[Amazon SNS]
+
+    COG[Cognito User Pool] --> API
+    CW[CloudWatch] -. Observability .-> L
+    CW -. Observability .-> WSL
+    CW -. Observability .-> N
+
+    CF -. OAC .-> S3
 ```
 
-### AWS services
+### Request / Queue Mutation Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Customer
+    participant API as API Gateway
+    participant L as Queue Lambda
+    participant DB as DynamoDB
+    participant E as EventBridge
+    participant B as Broadcast Lambda
+    participant WS as WebSocket API
+
+    C->>API: Join / Leave / Queue action
+    API->>L: Validated request
+    L->>DB: Conditional write / transaction
+    DB-->>L: Atomic result
+    L->>E: Domain event
+    L-->>API: Queue state / ticket
+    API-->>C: Response
+    E->>B: Queue event
+    B->>WS: Push live update
+    WS-->>C: Updated position / status
+```
+
+### Notification Flow
+
+```mermaid
+flowchart LR
+    Q[Queue Mutation] --> E[EventBridge]
+    E --> SQS[SQS Queue]
+    SQS --> N[Notification Lambda]
+    N --> SES[SES Email]
+    N --> SNS[SNS / Future Channels]
+    SQS -. failure .-> DLQ[SQS Dead-Letter Queue]
+```
+
+### Multi-Tenant Security Boundary
+
+```mermaid
+flowchart TD
+    P[Platform]
+    P --> O1[Organization A]
+    P --> O2[Organization B]
+
+    O1 --> B1[Branch A1]
+    O1 --> B2[Branch A2]
+    O2 --> B3[Branch B1]
+
+    B1 --> Q1[Queue]
+    B2 --> Q2[Queue]
+    B3 --> Q3[Queue]
+
+    Q1 --> C1[Customers / Staff]
+    Q2 --> C2[Customers / Staff]
+    Q3 --> C3[Customers / Staff]
+
+    AUTH[Server-side Authorization] -. isolates .-> O1
+    AUTH -. isolates .-> O2
+```
+
+> **Security principle:** the browser is never the authorization boundary. Tenant and role checks are enforced server-side before protected operations access tenant data.
+
+---
+
+## AWS Services
 
 | Service | Responsibility |
 |---|---|
 | Amazon CloudFront | Global HTTPS delivery and frontend edge caching |
 | Amazon S3 | Private static frontend origin |
-| Origin Access Control | Keeps the frontend bucket private behind CloudFront |
+| Origin Access Control | Keeps the S3 frontend private behind CloudFront |
 | API Gateway | REST API and WebSocket transport |
 | AWS Lambda | API, WebSocket, broadcast, and notification compute |
 | Amazon DynamoDB | Queue state, organizations, connections, idempotency and operational data |
 | Amazon Cognito | Staff authentication and identity |
-| Amazon EventBridge | Domain/event fan-out |
+| Amazon EventBridge | Domain-event fan-out |
 | Amazon SQS | Durable asynchronous notification processing |
 | Amazon SES | Email notification delivery |
 | Amazon SNS | Optional notification channel abstraction |
@@ -139,23 +191,23 @@ No refresh button. No clipboard. No guessing.
 
 ### Concurrency-safe queue engine
 
-Queue operations are designed around DynamoDB conditional writes and transactions rather than unsafe read-then-write counters. The test suite exercises simultaneous joins, concurrent `CALL NEXT`, leave/next races, pause/close races, and duplicate customer attempts.
+Queue operations use DynamoDB conditional writes and transactions rather than unsafe read-then-write counters. The test suite exercises simultaneous joins, concurrent `CALL NEXT`, leave/next races, pause/close races, and duplicate customer attempts.
 
 ### Idempotency
 
 Mutating operations support idempotency semantics so client retries do not accidentally create duplicate queue actions.
 
-### Multi-tenant data model
+### Multi-tenancy
 
-The application models organization → branch/service → queue boundaries and uses tenant-aware access checks. Authorization is enforced server-side; the browser is never treated as the security boundary.
+The application models organization → branch/service → queue boundaries and uses tenant-aware access checks. Authorization is enforced server-side.
 
 ### Real-time state
 
-Queue changes emit domain events that feed the broadcast path. Connected clients receive state changes over API Gateway WebSockets rather than repeatedly polling the API.
+Queue changes emit domain events that feed the broadcast path. Connected clients receive state changes over API Gateway WebSockets instead of repeatedly polling the API.
 
 ### Async notifications
 
-Notifications are deliberately separated from the critical queue mutation path using EventBridge and SQS. Transient delivery failures can therefore be retried without blocking the queue operation itself.
+Notifications are separated from the critical queue mutation path using EventBridge and SQS. Delivery failures can therefore be retried without blocking queue operations.
 
 ### Private frontend origin
 
@@ -177,7 +229,7 @@ LineLess/
 │   ├── assets/
 │   │   ├── css/
 │   │   └── js/
-│   │       └── views/           # Customer, staff, display and auth views
+│   │       └── views/
 │   ├── config.example.js
 │   └── index.html
 ├── infrastructure/
@@ -195,8 +247,7 @@ LineLess/
 │   ├── infra/
 │   └── websocket/
 ├── docs/
-│   └── AGENT_RULES.md
-├── .env.example
+├── .github/workflows/
 ├── package.json
 └── README.md
 ```
@@ -205,7 +256,7 @@ LineLess/
 
 ## Quality Gates
 
-The current repository includes a 58-test suite covering four areas:
+Current baseline:
 
 ```text
 Unit             ✓
@@ -222,7 +273,7 @@ Run the complete suite:
 npm test
 ```
 
-Run static/security-oriented checks:
+Run static/security checks:
 
 ```powershell
 npm run check
@@ -256,15 +307,13 @@ Start the local application:
 npm run dev
 ```
 
-The frontend is intentionally configuration-driven. Copy the example configuration only when local runtime values are available; never commit credentials or environment secrets.
+Runtime configuration is intentionally separated from source code. Never commit credentials, tokens, or environment secrets.
 
 ---
 
 ## AWS Deployment
 
-The infrastructure is defined in `infrastructure/lineless.yaml` and deployment automation lives in `scripts/`.
-
-Deploy:
+Infrastructure lives in `infrastructure/lineless.yaml` and deployment automation lives in `scripts/`.
 
 ```powershell
 ./scripts/deploy.ps1 -Environment dev
@@ -276,15 +325,13 @@ Destroy the environment:
 ./scripts/destroy.ps1 -Environment dev
 ```
 
-The deployment workflow validates prerequisites, tests the project, packages Lambda code, uploads the artifact, validates CloudFormation, creates/updates the stack, and publishes the frontend according to the configured deployment outputs.
+The deployment workflow validates prerequisites, tests the project, packages Lambda code, uploads the artifact, validates CloudFormation, creates/updates the stack, and publishes the frontend according to deployment outputs.
 
 **Never paste AWS access keys, secret keys, session tokens, or GitHub tokens into source files or commit history.**
 
 ---
 
 ## Security Model
-
-LineLess is designed around several explicit security boundaries:
 
 - Private S3 origin behind CloudFront Origin Access Control
 - S3 Block Public Access
@@ -298,7 +345,7 @@ LineLess is designed around several explicit security boundaries:
 - Asynchronous notification processing through SQS
 - Static secret/account/placeholder checks
 
-See the `docs/` directory for deeper operational documentation as the project evolves.
+See `docs/` for deeper security, deployment, architecture, and testing documentation.
 
 ---
 
@@ -310,22 +357,19 @@ See the `docs/` directory for deeper operational documentation as the project ev
 4. **Infrastructure as code** — CloudFormation is the deployment source of truth.
 5. **Observable failures** — errors should be diagnosable from logs and deterministic tests.
 6. **Cost-conscious serverless** — avoid always-on infrastructure where managed serverless primitives are sufficient.
-7. **Progressive enhancement** — a customer should be able to join a queue with the minimum possible friction.
+7. **Progressive enhancement** — customers should join with minimum friction.
 
 ---
 
 ## Roadmap
 
-The roadmap intentionally separates production-critical work from optional product expansion.
-
-### Next
+### Production hardening
 
 - [ ] Production browser smoke tests
-- [ ] GitHub Actions quality gates
 - [ ] CloudWatch operational dashboard
-- [ ] Stronger API rate limiting/WAF configuration
+- [ ] Stronger API rate limiting / WAF configuration
 - [ ] Production notification configuration and delivery tests
-- [ ] Deployment/rollback runbook
+- [ ] Deployment / rollback runbook
 
 ### Product expansion
 
@@ -349,17 +393,15 @@ Features are not advertised as complete until their backend, infrastructure, UI,
 
 ## Project Status
 
-**Current engineering baseline:** functional serverless queue platform with a concurrency-focused test suite and CloudFormation deployment automation.
+**Engineering baseline:** functional serverless queue platform with a concurrency-focused test suite and CloudFormation deployment automation.
 
-This repository is intentionally being hardened in stages. The goal is not to claim production readiness prematurely; every production capability should be backed by implementation and verification.
+The project is being hardened in stages. Production readiness is only claimed after implementation and verification of the relevant capability.
 
 ---
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
----
 
 ## Author
 
