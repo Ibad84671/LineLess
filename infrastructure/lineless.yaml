@@ -179,16 +179,16 @@ Resources:
               - Effect: Allow
                 Action: cognito-idp:AdminCreateUser
                 Resource: !GetAtt UserPool.Arn
-        - PolicyName: ses-optional
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - !If
-                - SesConfigured
+        - !If
+          - SesConfigured
+          - PolicyName: ses-optional
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
                 - Effect: Allow
                   Action: ses:SendEmail
                   Resource: "*"
-                - !Ref AWS::NoValue
+          - !Ref AWS::NoValue
 
   ApiFunction:
     Type: AWS::Lambda::Function
@@ -461,26 +461,26 @@ Resources:
                 Resource:
                   - !GetAtt MainTable.Arn
                   - !Sub "${MainTable.Arn}/index/*"
-        - PolicyName: ses-optional
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - !If
-                - SesConfigured
+        - !If
+          - SesConfigured
+          - PolicyName: ses
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
                 - Effect: Allow
                   Action: ses:SendEmail
                   Resource: "*"
-                - !Ref AWS::NoValue
-        - PolicyName: sns-optional
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - !If
-                - SmsEnabled
+          - !Ref AWS::NoValue
+        - !If
+          - SmsEnabled
+          - PolicyName: sns
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
                 - Effect: Allow
                   Action: sns:Publish
                   Resource: !Ref SmsTopic
-                - !Ref AWS::NoValue
+          - !Ref AWS::NoValue
 
   NotificationWorker:
     Type: AWS::Lambda::Function

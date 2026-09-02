@@ -58,11 +58,17 @@ node scripts/package-backend.js --out dist/lambda.zip; if ($LASTEXITCODE -ne 0) 
 # ---- 5. Upload artifact --------------------------------------------------------
 Step 'Uploading Lambda artifact'
 $ArtifactBucket = "lineless-$Environment-artifacts-$Account"
-aws s3api head-bucket --bucket $ArtifactBucket 2>$null
-if ($LASTEXITCODE -ne 0) {
+$bucketExists = $false
+try {
+  aws s3api head-bucket --bucket $ArtifactBucket 2>$null
+  $bucketExists = ($LASTEXITCODE -eq 0)
+} catch {
+  $bucketExists = $false
+}
+if (-not $bucketExists) {
   aws s3api create-bucket --bucket $ArtifactBucket --region $Region | Out-Null
   aws s3api put-public-access-block --bucket $ArtifactBucket --public-access-block-configuration BlockPublicAcls=true,BlockPublicPolicy=true,IgnorePublicAcls=true,RestrictPublicBuckets=true | Out-Null
-  aws s3api put-bucket-encryption --bucket $ArtifactBucket --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' | Out-Null
+  # Default SSE-S3 (AES256) encryption is applied automatically to new S3 buckets.
 }
 $hash = (Get-FileHash dist/lambda.zip -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
 $CodeKey = "lambda/lineless-$hash.zip"
@@ -70,8 +76,13 @@ aws s3 cp dist/lambda.zip "s3://$ArtifactBucket/$CodeKey" | Out-Null
 
 # ---- 6. Stack create/update ------------------------------------------------------
 Step 'Determining stack state'
-$stackJson = aws cloudformation describe-stacks --stack-name $StackName --region $Region --output json 2>$null
-$stackExists = ($LASTEXITCODE -eq 0)
+$stackExists = $false
+try {
+  $null = aws cloudformation describe-stacks --stack-name $StackName --region $Region --output json 2>$null
+  $stackExists = ($LASTEXITCODE -eq 0)
+} catch {
+  $stackExists = $false
+}
 
 $CfnDeployArgs = @(
   '--stack-name', $StackName,
