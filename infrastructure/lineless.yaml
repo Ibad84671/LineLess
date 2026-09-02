@@ -1,0 +1,848 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  LineLess — real-time virtual queue SaaS.
+  Serverless stack: CloudFront + S3 (OAC) frontend, HTTP API + WebSocket API,
+  Lambda router, DynamoDB single-table, EventBridge -> SQS -> SES/SNS
+  notification pipeline. Infrastructure source of truth (see docs/deployment.md).
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment (used in resource names).
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Extra CORS origins for the HTTP API (the CloudFront origin is always allowed). Dev origins localhost:5173 are always allowed.
+  SenderEmail:
+    Type: String
+    Default: ""
+    Description: Verified SES sender identity. If empty, email notifications are skipped (queue features unaffected).
+  EnableSmsNotifications:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Create an SNS topic and enable SMS notifications (optional paid feature).
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 14, 30, 90, 180, 365]
+    Description: CloudWatch log retention for Lambda logs.
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket containing the packaged Lambda artifact (created by scripts/deploy.ps1).
+  LambdaCodeKey:
+    Type: String
+    Description: S3 object key of the packaged Lambda artifact zip.
+
+Conditions:
+  SmsEnabled: !Equals [!Ref EnableSmsNotifications, "true"]
+  SesConfigured: !Not [!Equals [!Ref SenderEmail, ""]]
+
+Resources:
+
+  # =========================================================================
+  # DynamoDB — single table (see docs/database.md)
+  # =========================================================================
+  MainTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "lineless-${Environment}-main"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: GSI1PK, AttributeType: S }
+        - { AttributeName: GSI1SK, AttributeType: S }
+        - { AttributeName: GSI2PK, AttributeType: S }
+        - { AttributeName: GSI2SK, AttributeType: S }
+        - { AttributeName: GSI3PK, AttributeType: S }
+        - { AttributeName: GSI3SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: GSI1PK, KeyType: HASH }
+            - { AttributeName: GSI1SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: GSI2
+          KeySchema:
+            - { AttributeName: GSI2PK, KeyType: HASH }
+            - { AttributeName: GSI2SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: GSI3
+          KeySchema:
+            - { AttributeName: GSI3PK, KeyType: HASH }
+            - { AttributeName: GSI3SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+
+  # =========================================================================
+  # Cognito — staff/business authentication
+  # =========================================================================
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "lineless-${Environment}-users"
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      MfaConfiguration: "OFF"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - { Name: verified_email, Priority: 1 }
+      UserPoolAddOns:
+        AdvancedSecurityMode: AUDIT
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "lineless-${Environment}-web"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # =========================================================================
+  # Lambda — shared code artifact, per-function least-privilege roles
+  # (deploy script uploads one package; handlers differ per function)
+  # =========================================================================
+
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  ApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "lineless-${Environment}-api-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                  - dynamodb:ConditionCheckItem
+                  - dynamodb:transactWriteItems
+                Resource:
+                  - !GetAtt MainTable.Arn
+                  - !Sub "${MainTable.Arn}/index/*"
+        - PolicyName: events
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: events:PutEvents
+                Resource: !GetAtt EventBus.Arn
+        - PolicyName: cognito-admin
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: cognito-idp:AdminCreateUser
+                Resource: !GetAtt UserPool.Arn
+        - PolicyName: ses-optional
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - !If
+                - SesConfigured
+                - Effect: Allow
+                  Action: ses:SendEmail
+                  Resource: "*"
+                - !Ref AWS::NoValue
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "lineless-${Environment}-api"
+      Runtime: nodejs24.x
+      Architectures: [arm64]
+      Handler: api.handler
+      Role: !GetAtt ApiFunctionRole.Arn
+      MemorySize: 512
+      Timeout: 15
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MainTable
+          EVENT_BUS_NAME: !Ref EventBus
+          USER_POOL_ID: !Ref UserPool
+          COGNITO_ISSUER: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+          APP_CLIENT_ID: !Ref UserPoolClient
+          SENDER_EMAIL: !Ref SenderEmail
+          ENVIRONMENT: !Ref Environment
+      TracingConfig: { Mode: PassThrough }
+
+  # ---- WebSocket connection handlers ---------------------------------------
+  # The same artifact serves connect/default/disconnect via three handler
+  # entrypoints (ws.connect / ws.defaultHandler / ws.disconnect).
+
+  WsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${WsFunction}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  WsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "lineless-${Environment}-ws-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !GetAtt MainTable.Arn
+                  - !Sub "${MainTable.Arn}/index/*"
+
+  WsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "lineless-${Environment}-ws"
+      Runtime: nodejs24.x
+      Architectures: [arm64]
+      Handler: ws.connect
+      Role: !GetAtt WsFunctionRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MainTable
+          ENVIRONMENT: !Ref Environment
+      TracingConfig: { Mode: PassThrough }
+
+  # =========================================================================
+  # EventBridge — durable domain events (see docs/architecture.md)
+  # =========================================================================
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "lineless-${Environment}-events"
+
+  # Route all queue events to the WebSocket broadcaster Lambda.
+  BroadcasterRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "lineless-${Environment}-ws-broadcast"
+      EventBusName: !Ref EventBus
+      EventPattern:
+        source: ["lineless.queue"]
+      State: ENABLED
+      Targets:
+        - Id: broadcaster
+          Arn: !GetAtt BroadcasterFunction.Arn
+
+  # Route all queue events to the notification pipeline (SQS with DLQ).
+  NotificationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "lineless-${Environment}-notify"
+      EventBusName: !Ref EventBus
+      EventPattern:
+        source: ["lineless.queue"]
+        detail-type:
+          - QUEUE_JOINED
+          - NEXT_CALLED
+          - TURN_APPROACHING
+          - QUEUE_CLOSED
+      State: ENABLED
+      Targets:
+        - Id: notification-queue
+          Arn: !GetAtt NotificationQueue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 8
+            MaximumEventAgeInSeconds: 7200
+          DeadLetterConfig:
+            Arn: !GetAtt EventRuleDLQ.Arn
+
+  # DLQ for events the rule target could not accept.
+  EventRuleDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "lineless-${Environment}-rule-dlq"
+      MessageRetentionPeriod: 1209600
+
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "lineless-${Environment}-notifications"
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotificationDLQ.Arn
+        maxReceiveCount: 5
+
+  NotificationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "lineless-${Environment}-notifications-dlq"
+      MessageRetentionPeriod: 1209600
+
+  NotificationQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref NotificationQueue]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowEventBridgeSend
+            Effect: Allow
+            Principal: { Service: events.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: !GetAtt NotificationQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt NotificationRule.Arn
+
+  # Optional SMS topic (only when EnableSmsNotifications = true).
+  SmsTopic:
+    Type: AWS::SNS::Topic
+    Condition: SmsEnabled
+    Properties:
+      TopicName: !Sub "lineless-${Environment}-sms"
+
+  BroadcasterFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${BroadcasterFunction}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  BroadcasterFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "lineless-${Environment}-broadcaster-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                  - dynamodb:DeleteItem
+                Resource:
+                  - !GetAtt MainTable.Arn
+                  - !Sub "${MainTable.Arn}/index/*"
+        - PolicyName: ws-post
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: execute-api:Invoke
+                Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/${Environment}/POST/@connections/*"
+
+  BroadcasterFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "lineless-${Environment}-broadcaster"
+      Runtime: nodejs24.x
+      Architectures: [arm64]
+      Handler: broadcaster.handler
+      Role: !GetAtt BroadcasterFunctionRole.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MainTable
+          ENVIRONMENT: !Ref Environment
+      TracingConfig: { Mode: PassThrough }
+
+  BroadcasterInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BroadcasterFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt BroadcasterRule.Arn
+
+  NotificationWorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${NotificationWorker}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  NotificationWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "lineless-${Environment}-notify-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:transactWriteItems
+                Resource:
+                  - !GetAtt MainTable.Arn
+                  - !Sub "${MainTable.Arn}/index/*"
+        - PolicyName: ses-optional
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - !If
+                - SesConfigured
+                - Effect: Allow
+                  Action: ses:SendEmail
+                  Resource: "*"
+                - !Ref AWS::NoValue
+        - PolicyName: sns-optional
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - !If
+                - SmsEnabled
+                - Effect: Allow
+                  Action: sns:Publish
+                  Resource: !Ref SmsTopic
+                - !Ref AWS::NoValue
+
+  NotificationWorker:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "lineless-${Environment}-notify"
+      Runtime: nodejs24.x
+      Architectures: [arm64]
+      Handler: notification-worker.handler
+      Role: !GetAtt NotificationWorkerRole.Arn
+      MemorySize: 256
+      Timeout: 60
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MainTable
+          SENDER_EMAIL: !Ref SenderEmail
+          SMS_TOPIC_ARN: !If [SmsEnabled, !Ref SmsTopic, ""]
+          ENVIRONMENT: !Ref Environment
+      TracingConfig: { Mode: PassThrough }
+
+  NotificationWorkerEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref NotificationWorker
+      EventSourceArn: !GetAtt NotificationQueue.Arn
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 5
+      FunctionResponseTypes: [ReportBatchItemFailures]
+
+  # =========================================================================
+  # HTTP API — single router Lambda behind ANY /{proxy+}
+  # =========================================================================
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "lineless-${Environment}-http-api"
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - !Sub "https://${CloudFrontDistribution.DomainName}"
+          - "http://localhost:5173"
+          - "http://127.0.0.1:5173"
+        AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type, Idempotency-Key]
+        MaxAge: 600
+        AllowCredentials: false
+
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}::lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  HttpApiProxyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /{proxy+}"
+      Target: !Sub "integrations/${HttpApiIntegration}"
+
+  HttpApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ApiFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 200
+        ThrottlingRateLimit: 100
+
+  # =========================================================================
+  # WebSocket API — live queue events
+  # =========================================================================
+
+  WsApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "lineless-${Environment}-ws-api"
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  WsConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WsApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}::lambda:path/2015-03-31/functions/${WsFunction.Arn}/invocations"
+      PayloadFormatVersion: "1.0"
+
+  WsConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: "$connect"
+      Target: !Sub "integrations/${WsConnectIntegration}"
+
+  WsDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: "$default"
+      Target: !Sub "integrations/${WsConnectIntegration}"
+
+  WsDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: "$disconnect"
+      Target: !Sub "integrations/${WsConnectIntegration}"
+
+  WsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WsFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/*"
+
+  WsDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - WsConnectRoute
+      - WsDefaultRoute
+      - WsDisconnectRoute
+    Properties:
+      ApiId: !Ref WsApi
+
+  WsStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WsApi
+      StageName: !Ref Environment
+      DeploymentId: !Ref WsDeployment
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 500
+        ThrottlingRateLimit: 200
+
+  # =========================================================================
+  # S3 frontend (private) + CloudFront with Origin Access Control
+  # =========================================================================
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub "lineless-${Environment}-frontend-${AWS::AccountId}"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  FrontendOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "lineless-${Environment}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontReadViaOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  SecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "lineless-${Environment}-security-headers"
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: false
+            Override: true
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: >-
+              default-src 'self'; script-src 'self'; style-src 'self';
+              img-src 'self' data: https://*.amazonaws.com;
+              connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com;
+              font-src 'self'; object-src 'none'; base-uri 'self';
+              form-action 'self'; frame-ancestors 'none'
+            Override: true
+          ContentTypeOptions: { Override: true }
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "LineLess ${Environment} frontend"
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        IPV6Enabled: true
+        Origins:
+          - Id: frontend-origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FrontendOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: frontend-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: !Ref SecurityHeadersPolicy
+        PriceClass: PriceClass_100
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # =========================================================================
+  # CloudWatch alarms (operational, no recurring cost)
+  # =========================================================================
+
+  Api5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "lineless-${Environment}-api-5xx"
+      AlarmDescription: 5XX errors from the LineLess HTTP API
+      Namespace: AWS/ApiGateway
+      MetricName: 5XXError
+      Dimensions:
+        - { Name: ApiId, Value: !Ref HttpApi }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  NotificationDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "lineless-${Environment}-notify-dlq"
+      AlarmDescription: Messages landed in the notification DLQ
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - { Name: QueueName, Value: !GetAtt NotificationDLQ.QueueName }
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  LambdaErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "lineless-${Environment}-api-errors"
+      AlarmDescription: Errors raised by the API router Lambda
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref ApiFunction }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+# =========================================================================
+# Outputs — consumed by scripts/deploy.ps1 and the frontend build
+# =========================================================================
+
+Outputs:
+  CloudFrontURL:
+    Description: Frontend base URL
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+  DistributionId:
+    Description: CloudFront distribution ID (for cache invalidation)
+    Value: !Ref CloudFrontDistribution
+  FrontendBucketName:
+    Description: S3 bucket holding the frontend assets
+    Value: !Ref FrontendBucket
+  ApiUrl:
+    Description: HTTP API base URL
+    Value: !GetAtt HttpApi.ApiEndpoint
+  WebSocketUrl:
+    Description: WebSocket endpoint (wss)
+    Value: !Sub "${WsApi.ApiEndpoint}/${Environment}"
+  UserPoolId:
+    Description: Cognito user pool ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito app client ID
+    Value: !Ref UserPoolClient
+  CognitoIssuer:
+    Description: Cognito issuer URL (token verification)
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+  TableName:
+    Description: Main DynamoDB table
+    Value: !Ref MainTable
+  EventBusName:
+    Description: Domain event bus
+    Value: !Ref EventBus
+  NotificationQueueUrl:
+    Description: Notification SQS queue
+    Value: !Ref NotificationQueue
+  NotificationDlqUrl:
+    Description: Notification DLQ (should stay empty)
+    Value: !Ref NotificationDLQ
+  SmsTopicArn:
+    Condition: SmsEnabled
+    Description: Optional SMS topic (only when SMS notifications enabled)
+    Value: !Ref SmsTopic

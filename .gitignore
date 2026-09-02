@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.build/
+*.zip
+
+# Runtime generated config (dev default is config.example.js)
+frontend/config.js
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# AWS
+.aws-sam/
+samconfig.toml
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
