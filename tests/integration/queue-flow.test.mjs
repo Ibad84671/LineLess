@@ -178,3 +178,61 @@ test('domain events are recorded for queue operations', async () => {
   const joined = recordedEvents.find((e) => e.type === 'QUEUE_JOINED');
   assert.equal(joined.detail.token, a.token);
 });
+
+test('malformed contact info is rejected with bad request', async () => {
+  const { queue } = world;
+  await assert.rejects(
+    () => joinQueue({ queueId: queue.queueId, contact: {} }),
+    (e) => e.code === 'BAD_REQUEST',
+  );
+  await assert.rejects(
+    () => joinQueue({ queueId: queue.queueId, contact: { email: 'not-an-email' } }),
+    (e) => e.code === 'BAD_REQUEST',
+  );
+});
+
+test('idempotent join returns the same ticket on replay', async () => {
+  const { queue } = world;
+  const idempotencyKey = 'test-key-123';
+  const first = await joinQueue({ queueId: queue.queueId, contact: { name: 'A' }, idempotencyKey });
+  const replay = await joinQueue({ queueId: queue.queueId, contact: { name: 'A' }, idempotencyKey });
+  assert.equal(replay.ticket, first.ticket);
+  assert.equal(replay.token, first.token);
+  assert.equal(replay.replayed, true);
+});
+
+test('call next when nobody is waiting returns null called', async () => {
+  const { queue } = world;
+  const result = await callNext({ queueId: queue.queueId });
+  assert.equal(result.called, null);
+});
+
+test('skip with nobody serving returns nothingserving conflict', async () => {
+  const { queue } = world;
+  await assert.rejects(
+    () => skipCurrent({ queueId: queue.queueId }),
+    (e) => e.code === 'NOTHING_SERVING',
+  );
+});
+
+test('double call next on a single-customer queue is safe', async () => {
+  const { queue } = world;
+  await joinQueue({ queueId: queue.queueId, contact: { name: 'A' } });
+  const first = await callNext({ queueId: queue.queueId });
+  assert.ok(first.called);
+  // Second call should just complete the current customer, not call anyone new
+  const second = await callNext({ queueId: queue.queueId });
+  assert.equal(second.called, null);
+  assert.ok(second.served);
+});
+
+test('customer session does not expose other customer data', async () => {
+  const { queue } = world;
+  const a = await joinQueue({ queueId: queue.queueId, contact: { name: 'Alice', email: 'alice@x.example' } });
+  const b = await joinQueue({ queueId: queue.queueId, contact: { name: 'Bob', email: 'bob@x.example' } });
+  const sessionA = await getCustomerSession(a.token);
+  // Session should not expose raw DynamoDB keys or other customer data
+  assert.ok(!sessionA.PK, 'session must not expose PK');
+  assert.ok(!sessionA.SK, 'session must not expose SK');
+  assert.notEqual(sessionA.token, b.token, 'tokens must differ');
+});
