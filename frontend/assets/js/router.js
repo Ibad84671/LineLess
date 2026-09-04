@@ -18,6 +18,8 @@ const routes = [
   { pattern: /^\/join\/?$/, view: JoinDirectoryPage },
   { pattern: /^\/join\/(?<queueId>[A-Za-z0-9_-]{1,64})\/?$/, view: JoinQueuePage },
   { pattern: /^\/q\/(?<token>[A-Za-z0-9_-]{20,160})\/?$/, view: StatusPage },
+  // /q/:token is canonical; /status/:token is retained as a friendlier alias.
+  { pattern: /^\/status\/(?<token>[A-Za-z0-9_-]{20,160})\/?$/, view: StatusPage },
   { pattern: /^\/display\/(?<queueId>[A-Za-z0-9_-]{1,64})\/?$/, view: DisplayPage, chrome: false },
   { pattern: /^\/login\/?$/, view: LoginPage },
   { pattern: /^\/signup\/?$/, view: SignupPage },
@@ -64,7 +66,7 @@ export function render() {
   }
 
   if (matched.protected && !auth.isAuthenticated()) {
-    sessionStorage.setItem('lineless.returnTo', path);
+    sessionStorage.setItem('lineless.returnTo', `${location.pathname}${location.search}`);
     history.replaceState({}, '', '/login');
     render();
     return;
@@ -80,7 +82,7 @@ export function render() {
 export function startRouter() {
   document.addEventListener('click', (e) => {
     const link = e.target.closest('a[data-link]');
-    if (link && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+    if (link && !e.metaKey && !e.ctrlKey && !e.shiftKey && link.target !== '_blank') {
       e.preventDefault();
       navigate(link.getAttribute('href'));
     }
