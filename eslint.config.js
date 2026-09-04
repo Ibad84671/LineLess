@@ -42,7 +42,7 @@ const nodeGlobals = {
 };
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'tests/live/**'] },
   js.configs.recommended,
   {
     files: ['backend/**/*.js', 'scripts/**/*.js'],

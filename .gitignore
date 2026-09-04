@@ -34,3 +34,6 @@ npm-debug.log*
 
 # Test coverage
 coverage/
+
+# Ephemeral live smoke tests (generated during AWS validation)
+tests/live/
