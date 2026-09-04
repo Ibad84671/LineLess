@@ -196,7 +196,7 @@ Resources:
       FunctionName: !Sub "lineless-${Environment}-api"
       Runtime: nodejs24.x
       Architectures: [arm64]
-      Handler: api.handler
+      Handler: functions/api.handler
       Role: !GetAtt ApiFunctionRole.Arn
       MemorySize: 512
       Timeout: 15
@@ -260,7 +260,7 @@ Resources:
       FunctionName: !Sub "lineless-${Environment}-ws"
       Runtime: nodejs24.x
       Architectures: [arm64]
-      Handler: ws.handler
+      Handler: functions/ws.handler
       Role: !GetAtt WsFunctionRole.Arn
       MemorySize: 256
       Timeout: 10
@@ -409,7 +409,7 @@ Resources:
       FunctionName: !Sub "lineless-${Environment}-broadcaster"
       Runtime: nodejs24.x
       Architectures: [arm64]
-      Handler: broadcaster.handler
+      Handler: functions/broadcaster.handler
       Role: !GetAtt BroadcasterFunctionRole.Arn
       MemorySize: 256
       Timeout: 30
@@ -500,7 +500,7 @@ Resources:
       FunctionName: !Sub "lineless-${Environment}-notify"
       Runtime: nodejs24.x
       Architectures: [arm64]
-      Handler: notification-worker.handler
+      Handler: functions/notification-worker.handler
       Role: !GetAtt NotificationWorkerRole.Arn
       MemorySize: 256
       Timeout: 60

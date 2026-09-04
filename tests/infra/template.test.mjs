@@ -117,3 +117,21 @@ test('API Gateway Lambda integrations use the documented single-colon ARN format
   const badForm = raw.match(/apigateway:\$\{AWS::Region\}::lambda:path/g) || [];
   assert.equal(badForm.length, 0, `found invalid double-colon integration ARNs: ${badForm.join(', ')}`);
 });
+
+test('Lambda handlers match the packaged zip layout (functions/ prefix)', () => {
+  const raw = loadRaw();
+  // Live-deployment regression: scripts/package-backend.js preserves the
+  // backend/src tree, so entrypoints live at functions/*.js. Handlers must use
+  // the functions/ prefix (e.g. functions/api.handler) — otherwise Lambda
+  // throws Runtime.ImportModuleError: Cannot find module.
+  const blocks = resourceBlocks(raw);
+  const lambdas = blocks.filter((b) => blockType(b) === 'AWS::Lambda::Function');
+  for (const fn of lambdas) {
+    const handlerLine = fn.lines.find((l) => l.trim().startsWith('Handler:'));
+    assert.ok(handlerLine, `Lambda ${fn.name} must declare a Handler`);
+    const handler = handlerLine.split(':').slice(1).join(':').trim();
+    assert.ok(handler.startsWith('functions/'),
+      `Lambda ${fn.name} handler '${handler}' must use the functions/ prefix (zip layout)`);
+    assert.ok(!/\.mjs$/.test(handler), `Lambda ${fn.name} handler should not reference a .mjs file`);
+  }
+});

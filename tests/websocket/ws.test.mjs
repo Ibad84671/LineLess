@@ -36,8 +36,8 @@ test('WebSocket Lambda uses the dispatcher handler (connect/default/disconnect r
   // P0 regression guard: all three routes share one integration, so the single
   // WsFunction MUST use the ws.handler dispatcher. A plain ws.connect handler
   // would make $default re-register connections and $disconnect resurrect them.
-  assert.ok(/Handler: ws\.handler/.test(raw),
-    'WsFunction must use the ws.handler dispatcher so $default/$disconnect are handled correctly');
+  assert.ok(/Handler: functions\/ws\.handler/.test(raw),
+    'WsFunction must use the functions/ws.handler dispatcher so $default/$disconnect are handled correctly');
   assert.ok(!/Handler: ws\.connect\b/.test(raw), 'ws.connect must not be the Lambda handler');
 });
 
