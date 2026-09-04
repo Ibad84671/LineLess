@@ -9,7 +9,7 @@ const config = window.LINELESS_CONFIG ?? {};
 const STORAGE_KEY = 'lineless.auth';
 
 function cognitoEndpoint(target) {
-  const { region, cognito } = config;
+  const { region } = config;
   return {
     url: `https://cognito-idp.${region}.amazonaws.com/`,
     headers: {

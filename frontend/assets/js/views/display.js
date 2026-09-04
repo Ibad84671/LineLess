@@ -53,7 +53,7 @@ export function DisplayPage(app, params) {
     try {
       const state = await api.get(`/queues/${encodeURIComponent(queueId)}/display`);
       render(state);
-    } catch (err) {
+    } catch {
       app.replaceChildren(
         h('div', { class: 'display' },
           h('div', { class: 'display__notice' }, 'QUEUE NOT FOUND'),

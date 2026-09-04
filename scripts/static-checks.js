@@ -21,12 +21,6 @@ const ROOT_FILES = [
 ];
 const ALLOW_EXT = new Set(['.js', '.mjs', '.cjs', '.json', '.yaml', '.yml', '.css', '.html', '.md', '.example', '']);
 
-const ALLOWLIST_PATTERNS = [
-  // Example docs/keys in this repository's own explanations
-  /AKIAIOSFODNN7EXAMPLE/, // canonical AWS documentation example key
-  /50\d{10}(?!\d)/, // handled separately below — placeholder
-];
-
 const CHECKS = [
   {
     name: 'AWS access key id (AKIA/ASIA)',

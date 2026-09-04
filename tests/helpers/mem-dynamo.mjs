@@ -248,7 +248,7 @@ export function createMemDynamo() {
         throw new Error(`Cannot parse SET term: ${rest}`);
       }
       terms.push({ op, term });
-      const opMatch = /^\s*([+\-])\s*/.exec(rest);
+      const opMatch = /^\s*([+-])\s*/.exec(rest);
       if (opMatch) {
         op = opMatch[1];
         rest = rest.slice(opMatch[0].length);

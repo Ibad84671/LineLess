@@ -1,6 +1,6 @@
 // History-API router with CloudFront-friendly clean URLs.
 
-import { h, clear, spinner } from './dom.js';
+import { clear, spinner } from './dom.js';
 import { auth } from './auth.js';
 import { renderTopbar } from './topbar.js';
 import { LandingPage } from './views/landing.js';

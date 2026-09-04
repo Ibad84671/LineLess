@@ -56,7 +56,7 @@ const server = createServer(async (req, res) => {
       'X-Content-Type-Options': 'nosniff',
     });
     res.end(body);
-  } catch (err) {
+  } catch {
     res.writeHead(500, { 'Content-Type': 'text/plain' });
     res.end('Dev server error');
   }

@@ -112,7 +112,7 @@ export function JoinQueuePage(app, params) {
     );
   }
 
-  function buildForm(state) {
+  function buildForm(_state) {
     const nameInput = h('input', { id: 'jn', name: 'name', type: 'text', maxlength: '80', autocomplete: 'name', required: true, placeholder: 'Your name' });
     const emailInput = h('input', { id: 'je', name: 'email', type: 'email', autocomplete: 'email', placeholder: 'you@example.com (optional)' });
     const phoneInput = h('input', { id: 'jp', name: 'phone', type: 'tel', autocomplete: 'tel', placeholder: 'Phone for alerts (optional)' });

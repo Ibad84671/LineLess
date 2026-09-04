@@ -19,7 +19,7 @@ function resourceBlocks(raw) {
   const lines = raw.split(/\r?\n/);
   let current = null;
   for (const line of lines) {
-    const m = /^  ([A-Za-z][\w]*):$/.exec(line);
+    const m = /^ {2}([A-Za-z][\w]*):$/.exec(line);
     if (m) {
       current = { name: m[1], lines: [] };
       blocks.push(current);
