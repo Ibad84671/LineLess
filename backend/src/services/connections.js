@@ -135,7 +135,7 @@ export async function broadcastToScope(scopeType, scopeId, message, { store = db
           stale += 1;
           await store.delete(keys.connection(connectionId));
         } else {
-          logger.warn('WebSocket post failed', { connectionId: undefined, error: err.name });
+          logger.warn('WebSocket post failed', { error: err.name });
         }
       }
     }),

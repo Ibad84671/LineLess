@@ -7,12 +7,28 @@
 // - $disconnect removes the registration immediately.
 
 import { registerConnection, removeConnection, subscribeConnection, unsubscribeConnection } from '../services/connections.js';
-import { badRequest, AppError } from '../shared/errors.js';
+import { AppError } from '../shared/errors.js';
 import { logger } from '../shared/logger.js';
 import { assertEnv } from '../shared/env.js';
 
 function endpointFromEvent(event) {
   return `https://${event.requestContext.domainName}/${event.requestContext.stage}`;
+}
+
+// Single Lambda entrypoint for ALL WebSocket routes. API Gateway sends
+// event.requestContext.eventType = CONNECT | MESSAGE | DISCONNECT; dispatching
+// here keeps one function + one integration serving all three routes, so the
+// $default and $disconnect routes can never accidentally invoke the connect
+// handler.
+export async function handler(event) {
+  switch (event.requestContext?.eventType) {
+    case 'CONNECT':
+      return connect(event);
+    case 'DISCONNECT':
+      return disconnect(event);
+    default:
+      return defaultHandler(event);
+  }
 }
 
 export async function connect(event) {

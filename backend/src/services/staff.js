@@ -3,7 +3,7 @@
 import { db } from '../shared/dynamo.js';
 import { keys } from '../shared/keys.js';
 import { opaqueId } from '../shared/ids.js';
-import { notFound, conflict, forbidden } from '../shared/errors.js';
+import { notFound, conflict } from '../shared/errors.js';
 import { sanitizeText, email as validEmail, bool, oneOf } from '../shared/validate.js';
 import { ROLES, requireRole } from '../shared/auth.js';
 

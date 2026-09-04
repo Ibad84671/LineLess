@@ -12,26 +12,6 @@ function loadRaw() {
   return readFileSync(templatePath, 'utf8');
 }
 
-function resourceBlocks(raw) {
-  const blocks = [];
-  const lines = raw.split(/\r?\n/);
-  let current = null;
-  for (const line of lines) {
-    const m = /^  ([A-Za-z][\w]*):$/.exec(line);
-    if (m) {
-      current = { name: m[1], lines: [] };
-      blocks.push(current);
-    } else if (current) {
-      current.lines.push(line);
-    }
-  }
-  return blocks;
-}
-
-function blockText(b) {
-  return b.lines.join('\n');
-}
-
 test('WebSocket API is declared', () => {
   const raw = loadRaw();
   assert.ok(/AWS::ApiGatewayV2::Api/.test(raw), 'no WebSocket API declared');
@@ -49,6 +29,21 @@ test('WebSocket integration points at a Lambda function', () => {
   const raw = loadRaw();
   assert.ok(/AWS::ApiGatewayV2::Integration/.test(raw), 'no WebSocket integration');
   assert.ok(/IntegrationType: AWS_PROXY/.test(raw), 'integration must use AWS_PROXY');
+});
+
+test('WebSocket Lambda uses the dispatcher handler (connect/default/disconnect regression)', () => {
+  const raw = loadRaw();
+  // P0 regression guard: all three routes share one integration, so the single
+  // WsFunction MUST use the ws.handler dispatcher. A plain ws.connect handler
+  // would make $default re-register connections and $disconnect resurrect them.
+  assert.ok(/Handler: ws\.handler/.test(raw),
+    'WsFunction must use the ws.handler dispatcher so $default/$disconnect are handled correctly');
+  assert.ok(!/Handler: ws\.connect\b/.test(raw), 'ws.connect must not be the Lambda handler');
+});
+
+test('API Lambda receives PUBLIC_URL so QR codes encode absolute join links', () => {
+  const raw = loadRaw();
+  assert.ok(/PUBLIC_URL:/.test(raw), 'ApiFunction must receive PUBLIC_URL for QR generation');
 });
 
 test('DynamoDB table exists', () => {

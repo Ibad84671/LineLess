@@ -30,7 +30,7 @@ async function buildAuth(event, spec, groups) {
   if (spec === 'queue') return authorizeQueueRoute(event, groups.queueId, ROLES.STAFF);
   if (spec === 'queue-manager') return authorizeQueueRoute(event, groups.queueId, ROLES.MANAGER);
   if (spec?.org === 'path') {
-    return resolveContext(event, { orgId: groups.orgId });
+    return resolveContext(event, { orgId: groups.orgId, minRole: spec.minRole });
   }
   throw notFound('Route misconfigured');
 }

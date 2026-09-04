@@ -19,6 +19,7 @@ import {
   publishOrganization,
   listOrgBranches,
   listOrgServices,
+  linkStaffOnSignup,
 } from '../services/staff.js';
 import { getOrganizationAnalytics } from '../services/analytics.js';
 import {
@@ -35,6 +36,9 @@ export const staffRoutes = [
     pattern: /^\/me$/,
     auth: 'self',
     handler: async (ctx) => {
+      // First authenticated request links any PENDING_LINK staff invitations
+      // (matched by verified email) to the caller's real Cognito sub.
+      await linkStaffOnSignup(ctx.auth);
       const orgs = await listOrganizationsForUser(ctx.auth.sub);
       return ok({ sub: ctx.auth.sub, email: ctx.auth.email, organizations: orgs });
     },

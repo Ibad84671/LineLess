@@ -62,14 +62,17 @@ export async function processNotification(event, { store = db() } = {}) {
     return notifyQueueClosed(store, event);
   }
 
-  // Idempotency: conditional put wins exactly once per event id.
+  // Idempotency: conditional put wins exactly once per event id. The key is
+  // the full notificationLog key (PK + SK = NTF#eventId) — using a constant SK
+  // here would make the first notification ever block all later ones for the
+  // organization, because attribute_not_exists evaluates against the whole key.
   try {
     await store.transactWrite([
       {
         Put: {
           Item: {
             PK: keys.notificationLog(orgId, eventId).PK,
-            SK: 'RESULT',
+            SK: keys.notificationLog(orgId, eventId).SK,
             entityType: 'Notification',
             eventId,
             type,
@@ -123,7 +126,8 @@ async function notifyQueueClosed(store, event) {
           Put: {
             Item: {
               PK: keys.notificationLog(d.orgId, perCustomerId).PK,
-              SK: 'RESULT',
+              SK: keys.notificationLog(d.orgId, perCustomerId).SK,
+              entityType: 'Notification',
               eventId: perCustomerId,
               type: 'QUEUE_CLOSED',
               queueId: d.queueId,

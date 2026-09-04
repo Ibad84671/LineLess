@@ -19,14 +19,14 @@ export async function handler(event) {
         messageId: record.messageId,
         error: err.message,
       });
-      results.push(false); // let SQS retry; DLQ after maxReceiveCount
+      results.push(false); // signal this record for retry; DLQ after maxReceiveCount
     }
   }
 
+  // The event source mapping enables ReportBatchItemFailures, so report only
+  // the failed messageIds — successful messages in the batch are NOT retried.
   const failed = failedBatchItemIds(records, results);
-  if (failed.length > 0) {
-    // Report partial batch failure so only failed messages are retried.
-    throw new Error(`Notification delivery failed for: ${failed.join(',')}`);
-  }
-  return { batchItemFailures: [] };
+  return {
+    batchItemFailures: failed.map((itemIdentifier) => ({ itemIdentifier })),
+  };
 }

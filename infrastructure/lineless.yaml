@@ -211,12 +211,13 @@ Resources:
           COGNITO_ISSUER: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
           APP_CLIENT_ID: !Ref UserPoolClient
           SENDER_EMAIL: !Ref SenderEmail
+          PUBLIC_URL: !Sub "https://${CloudFrontDistribution.DomainName}"
           ENVIRONMENT: !Ref Environment
       TracingConfig: { Mode: PassThrough }
 
   # ---- WebSocket connection handlers ---------------------------------------
-  # The same artifact serves connect/default/disconnect via three handler
-  # entrypoints (ws.connect / ws.defaultHandler / ws.disconnect).
+  # One artifact serves all three routes via a single dispatcher entrypoint
+  # (ws.handler) that routes on event.requestContext.eventType.
 
   WsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -259,7 +260,7 @@ Resources:
       FunctionName: !Sub "lineless-${Environment}-ws"
       Runtime: nodejs24.x
       Architectures: [arm64]
-      Handler: ws.connect
+      Handler: ws.handler
       Role: !GetAtt WsFunctionRole.Arn
       MemorySize: 256
       Timeout: 10
