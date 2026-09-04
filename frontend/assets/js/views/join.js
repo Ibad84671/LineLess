@@ -66,7 +66,7 @@ export function showError(app, err) {
       status === 404
         ? 'This queue does not exist or is no longer available.'
         : 'LineLess could not reach the service. Check your connection and try again.',
-      h('button', { class: 'btn btn--ghost', onclick: () => location.reload() }, 'Try again'),
+      h('button', { class: 'btn btn--ghost', type: 'button', onclick: () => location.reload() }, 'Try again'),
     ),
   );
 }
@@ -98,7 +98,7 @@ export function JoinQueuePage(app, params) {
         h('div', { class: 'stat-row' },
           stat('Now serving', state.nowServingDisplay ?? '—'),
           stat('Waiting', String(state.waitingCount ?? 0)),
-          stat('Avg. service', state.avgServiceMinutes != null ? `${state.avgServiceMinutes} min` : '—'),
+          stat('Avg. service', state.avgWaitMinutes != null ? `${state.avgWaitMinutes} min` : '—'),
         ),
         closed
           ? h('div', { class: 'card notice-card', role: 'status' },
@@ -152,18 +152,9 @@ export function JoinQueuePage(app, params) {
         }
       },
     },
-      h('div', { class: 'field' },
-        h('label', { for: 'jn' }, 'Name'),
-        nameInput,
-      ),
-      h('div', { class: 'field' },
-        h('label', { for: 'je' }, 'Email ', h('span', { class: 'muted' }, '(optional — for turn alerts)')),
-        emailInput,
-      ),
-      h('div', { class: 'field' },
-        h('label', { for: 'jp' }, 'Phone ', h('span', { class: 'muted' }, '(optional — for SMS alerts)')),
-        phoneInput,
-      ),
+      h('div', { class: 'field' }, h('label', { for: 'jn' }, 'Name'), nameInput),
+      h('div', { class: 'field' }, h('label', { for: 'je' }, 'Email ', h('span', { class: 'muted' }, '(optional — for turn alerts)')), emailInput),
+      h('div', { class: 'field' }, h('label', { for: 'jp' }, 'Phone ', h('span', { class: 'muted' }, '(optional — for SMS alerts)')), phoneInput),
       submit,
       h('p', { class: 'muted form-note' }, 'No account needed. You will get a private link to track your spot.'),
     );
