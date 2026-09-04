@@ -14,13 +14,14 @@ export function JoinDirectoryPage(app) {
       app.append(
         h('div', { class: 'page' },
           h('header', { class: 'page__header' },
+            h('p', { class: 'eyebrow' }, 'Public directory'),
             h('h1', {}, 'Find a service'),
-            h('p', { class: 'muted' }, 'Businesses publishing public queues with LineLess.'),
+            h('p', { class: 'muted' }, 'Choose a business to view its public queue. Have a QR code or direct queue link? You can open that directly too.'),
           ),
           organizations.length === 0
             ? emptyState(
                 'No public queues yet',
-                'Businesses appear here once they publish their queues. If you have a QR code or queue link, open it directly.',
+                'Businesses appear here once they publish a queue. If you have a QR code or queue link, open it directly.',
                 h('a', { href: '/', 'data-link': true, class: 'btn btn--ghost' }, 'Back to home'),
               )
             : h('ul', { class: 'card-list' },
@@ -29,12 +30,13 @@ export function JoinDirectoryPage(app) {
                     class: 'card card--link',
                     href: `/join?org=${encodeURIComponent(o.orgId)}`,
                     'data-link': true,
+                    'aria-label': `View public queues for ${o.name}`,
                   },
                     h('div', {},
                       h('strong', {}, o.name),
                       o.location ? h('span', { class: 'muted' }, ` · ${o.location}`) : null,
                     ),
-                    h('span', { class: 'muted' }, 'View queues'),
+                    h('span', { class: 'muted' }, 'View queues →'),
                   ),
                 )),
               ),
@@ -60,11 +62,11 @@ export function showError(app, err) {
   const status = err instanceof ApiError ? err.status : 0;
   app.append(
     emptyState(
-      status === 404 ? 'Not found' : 'Something went wrong',
+      status === 404 ? 'Not found' : 'Connection problem',
       status === 404
         ? 'This queue does not exist or is no longer available.'
-        : 'Could not reach LineLess. Check your connection and try again.',
-      h('button', { class: 'btn btn--ghost', onclick: () => location.reload() }, 'Retry'),
+        : 'LineLess could not reach the service. Check your connection and try again.',
+      h('button', { class: 'btn btn--ghost', onclick: () => location.reload() }, 'Try again'),
     ),
   );
 }
@@ -96,12 +98,14 @@ export function JoinQueuePage(app, params) {
         h('div', { class: 'stat-row' },
           stat('Now serving', state.nowServingDisplay ?? '—'),
           stat('Waiting', String(state.waitingCount ?? 0)),
-          stat('Avg. service', state.avgWaitMinutes ? `${state.avgWaitMinutes} min` : '—'),
+          stat('Avg. service', state.avgServiceMinutes != null ? `${state.avgServiceMinutes} min` : '—'),
         ),
         closed
           ? h('div', { class: 'card notice-card', role: 'status' },
               h('strong', {}, state.paused ? 'This queue is paused' : 'This queue is closed'),
-              h('p', { class: 'muted' }, 'Check back later or ask the staff for details.'),
+              h('p', { class: 'muted' }, state.paused
+                ? 'New customers cannot join while the queue is paused. Check back when service resumes.'
+                : 'New customers cannot join this queue right now. Ask staff if you need help.'),
             )
           : buildForm(state),
       ),
@@ -136,6 +140,9 @@ export function JoinQueuePage(app, params) {
             toast('You are already in this queue.', 'warn');
           } else if (err instanceof ApiError && err.code === 'QUEUE_CLOSED') {
             toast('This queue just closed.', 'warn');
+            load();
+          } else if (err instanceof ApiError && err.code === 'QUEUE_PAUSED') {
+            toast('This queue is currently paused.', 'warn');
             load();
           } else if (err instanceof ApiError) {
             toast(err.message, 'error');
