@@ -548,7 +548,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}::lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+      IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
       PayloadFormatVersion: "2.0"
 
   HttpApiProxyRoute:
@@ -592,8 +592,7 @@ Resources:
     Properties:
       ApiId: !Ref WsApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}::lambda:path/2015-03-31/functions/${WsFunction.Arn}/invocations"
-      PayloadFormatVersion: "1.0"
+      IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsFunction.Arn}/invocations"
 
   WsConnectRoute:
     Type: AWS::ApiGatewayV2::Route

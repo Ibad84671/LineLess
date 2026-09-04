@@ -105,3 +105,15 @@ test('notification worker role may consume the SQS queue (event source mapping r
   assert.ok(/sqs:GetQueueAttributes/.test(raw), 'worker role must be granted sqs:GetQueueAttributes');
   assert.ok(/AWS::Lambda::EventSourceMapping/.test(raw), 'event source mapping must exist');
 });
+
+test('API Gateway Lambda integrations use the documented single-colon ARN format', () => {
+  const raw = loadRaw();
+  // Live-deployment regression: "arn:...:apigateway:{region}::lambda:path/..." is
+  // rejected with "AWS ARN for integration must contain path or action".
+  // The documented format is "arn:...:apigateway:{region}:lambda:path/...".
+  const apigwIntegrationUris = (raw.match(/arn:\$\{AWS::Partition\}:apigateway:\$\{AWS::Region\}:lambda:path\/2015-03-31\/functions\/\$\{(ApiFunction|WsFunction)\.Arn\}\/invocations/g) || []);
+  assert.equal(apigwIntegrationUris.length, 2,
+    'expected both HTTP and WebSocket Lambda proxy integrations in documented ARN form');
+  const badForm = raw.match(/apigateway:\$\{AWS::Region\}::lambda:path/g) || [];
+  assert.equal(badForm.length, 0, `found invalid double-colon integration ARNs: ${badForm.join(', ')}`);
+});
