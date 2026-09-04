@@ -95,3 +95,13 @@ test('no hardcoded account IDs in resources', () => {
   const matches = raw.match(/(?<![\w-])\d{12}(?![\w-])/g) || [];
   assert.equal(matches.length, 0, `found hardcoded 12-digit numbers: ${matches.join(', ')}`);
 });
+
+test('notification worker role may consume the SQS queue (event source mapping regression)', () => {
+  const raw = loadRaw();
+  // Live-deployment regression: the NotificationWorkerEventSourceMapping fails
+  // to create unless the worker role can receive/delete messages.
+  assert.ok(/sqs:ReceiveMessage/.test(raw), 'worker role must be granted sqs:ReceiveMessage');
+  assert.ok(/sqs:DeleteMessage/.test(raw), 'worker role must be granted sqs:DeleteMessage');
+  assert.ok(/sqs:GetQueueAttributes/.test(raw), 'worker role must be granted sqs:GetQueueAttributes');
+  assert.ok(/AWS::Lambda::EventSourceMapping/.test(raw), 'event source mapping must exist');
+});
