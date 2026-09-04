@@ -135,3 +135,14 @@ test('Lambda handlers match the packaged zip layout (functions/ prefix)', () => 
     assert.ok(!/\.mjs$/.test(handler), `Lambda ${fn.name} handler should not reference a .mjs file`);
   }
 });
+
+test('broadcaster can drive the WebSocket Management API (ManageConnections)', () => {
+  const raw = loadRaw();
+  // Live-deployment regression: the broadcaster's PostToConnection failed with
+  // AccessDeniedException. The WebSocket Management API requires the IAM action
+  // execute-api:ManageConnections (NOT execute-api:Invoke).
+  assert.ok(/execute-api:ManageConnections/.test(raw),
+    'broadcaster role must grant execute-api:ManageConnections for PostToConnection');
+  assert.ok(/\/POST\/@connections\/\*/.test(raw),
+    'Management API resource must scope to POST/@connections/*');
+});

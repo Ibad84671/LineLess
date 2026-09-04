@@ -25,6 +25,13 @@ Parameters:
     Default: 30
     AllowedValues: [7, 14, 30, 90, 180, 365]
     Description: CloudWatch log retention for Lambda logs.
+  WsDeploymentVersion:
+    Type: String
+    Default: v1
+    Description: >-
+      Bump to force a fresh WebSocket API deployment snapshot (WebSocket
+      deployments are immutable — route/integration changes require a new
+      deployment to take effect).
   LambdaCodeBucket:
     Type: String
     Description: S3 bucket containing the packaged Lambda artifact (created by scripts/deploy.ps1).
@@ -400,7 +407,7 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action: execute-api:Invoke
+                Action: execute-api:ManageConnections
                 Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/${Environment}/POST/@connections/*"
 
   BroadcasterFunction:
@@ -615,6 +622,15 @@ Resources:
       RouteKey: "$disconnect"
       Target: !Sub "integrations/${WsConnectIntegration}"
 
+  # Enables two-way communication on $default so backend responses (PONG,
+  # SUBSCRIBED) are delivered back to the connecting client.
+  WsDefaultRouteResponse:
+    Type: AWS::ApiGatewayV2::RouteResponse
+    Properties:
+      ApiId: !Ref WsApi
+      RouteId: !Ref WsDefaultRoute
+      RouteResponseKey: "$default"
+
   WsInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -629,8 +645,10 @@ Resources:
       - WsConnectRoute
       - WsDefaultRoute
       - WsDisconnectRoute
+      - WsDefaultRouteResponse
     Properties:
       ApiId: !Ref WsApi
+      Description: !Sub "ws-${Environment}-${WsDeploymentVersion}"
 
   WsStage:
     Type: AWS::ApiGatewayV2::Stage
