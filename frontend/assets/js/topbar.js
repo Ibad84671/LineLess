@@ -8,7 +8,7 @@ export function renderTopbar(el, hidden = false) {
   if (!el) return;
   if (hidden) {
     el.hidden = true;
-    el.innerHTML = '';
+    el.replaceChildren();
     return;
   }
   el.hidden = false;
@@ -19,7 +19,7 @@ export function renderTopbar(el, hidden = false) {
         h('span', { class: 'brand__mark', 'aria-hidden': 'true' }),
         'LineLess',
       ),
-      h('nav', { class: 'topbar__nav', 'aria-label': 'Primary' },
+      h('nav', { class: 'topbar__nav', 'aria-label': 'Primary navigation' },
         h('a', { href: '/join', 'data-link': true }, 'Find a queue'),
         signedIn ? h('a', { href: '/dashboard', 'data-link': true }, 'Dashboard') : null,
         signedIn ? h('a', { href: '/dashboard/analytics', 'data-link': true }, 'Analytics') : null,
@@ -28,6 +28,7 @@ export function renderTopbar(el, hidden = false) {
         signedIn
           ? h('button', {
               class: 'btn btn--ghost btn--sm',
+              type: 'button',
               onclick: () => { auth.signOut(); navigate('/'); },
             }, 'Sign out')
           : h('a', { href: '/login', 'data-link': true, class: 'btn btn--ghost btn--sm' }, 'Business sign in'),
