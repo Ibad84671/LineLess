@@ -1,23 +1,24 @@
 // Guided onboarding: organization → branch → service → queue.
 
-import { h, clear, toast, spinner, emptyState } from '../dom.js';
+import { h, toast } from '../dom.js';
 import { api, ApiError } from '../api.js';
 import { navigate } from '../router.js';
-import { showError } from './join.js';
 
 export function OnboardingPage(app) {
   const step1 = buildStep(
     'Create your organization',
     'This is your tenant — staff, branches and queues live inside it.',
     [
-      input('ob-org', 'Organization name', 'text', 'e.g. Northside Dental'),
-      input('ob-loc', 'Location (optional)', 'text', 'e.g. Austin, TX'),
+      input('ob-org', 'Organization name', 'text', 'e.g. Northside Dental', { required: true, maxlength: 100 }),
+      input('ob-loc', 'Location (optional)', 'text', 'e.g. Austin, TX', { required: false, maxlength: 120 }),
     ],
     async (values, next) => {
       const org = await api.post('/organizations', { name: values['ob-org'] });
       try {
         await api.post(`/organizations/${org.orgId}/publish`, { publish: true, location: values['ob-loc'] || undefined });
-      } catch { /* publishing is optional */ }
+      } catch {
+        // Publishing is optional; organization creation remains successful.
+      }
       next({ org });
     },
   );
@@ -26,8 +27,8 @@ export function OnboardingPage(app) {
     'Add a branch',
     'A physical location where customers wait.',
     [
-      input('ob-branch', 'Branch name', 'text', 'e.g. Main Street'),
-      input('ob-addr', 'Address (optional)', 'text', '123 Main St'),
+      input('ob-branch', 'Branch name', 'text', 'e.g. Main Street', { required: true, maxlength: 100 }),
+      input('ob-addr', 'Address (optional)', 'text', '123 Main St', { required: false, maxlength: 160 }),
     ],
     async (values, next, carry) => {
       const branch = await api.post(`/organizations/${carry.org.orgId}/branches`, {
@@ -42,8 +43,8 @@ export function OnboardingPage(app) {
     'Define a service',
     'What customers line up for, and roughly how long it takes.',
     [
-      input('ob-svc', 'Service name', 'text', 'e.g. Check-up'),
-      input('ob-mins', 'Typical minutes', 'number', '5'),
+      input('ob-svc', 'Service name', 'text', 'e.g. Check-up', { required: true, maxlength: 100 }),
+      input('ob-mins', 'Typical minutes', 'number', '5', { required: true, min: 1, max: 480 }),
     ],
     async (values, next, carry) => {
       const service = await api.post(`/organizations/${carry.org.orgId}/services`, {
@@ -58,6 +59,7 @@ export function OnboardingPage(app) {
     h('div', { class: 'card form-card' },
       h('p', { class: 'eyebrow' }, 'Final step'),
       h('h1', {}, 'Create your queue'),
+      h('p', { class: 'muted' }, 'Set the ticket format and number of serving counters. You can manage the queue after setup.'),
       buildQueueForm(),
     ),
   );
@@ -65,10 +67,10 @@ export function OnboardingPage(app) {
   let carry = {};
 
   function buildQueueForm() {
-    const name = input('ob-q', 'Queue name', 'text', 'e.g. Morning walk-ins');
-    const prefix = input('ob-prefix', 'Ticket prefix', 'text', 'A');
-    const pad = input('ob-pad', 'Number padding', 'number', '3');
-    const staff = input('ob-staff', 'Serving counters', 'number', '1');
+    const name = input('ob-q', 'Queue name', 'text', 'e.g. Morning walk-ins', { required: true, maxlength: 100 });
+    const prefix = input('ob-prefix', 'Ticket prefix', 'text', 'A', { required: false, maxlength: 8 });
+    const pad = input('ob-pad', 'Number padding', 'number', '3', { required: true, min: 1, max: 8 });
+    const staff = input('ob-staff', 'Serving counters', 'number', '1', { required: true, min: 1, max: 100 });
     const submit = h('button', { class: 'btn btn--primary btn--lg btn--block', type: 'submit' }, 'Create queue');
     return h('form', {
       onsubmit: async (e) => {
@@ -79,10 +81,10 @@ export function OnboardingPage(app) {
           const queue = await api.post(
             `/organizations/${encodeURIComponent(carry.org.orgId)}/queues`,
             {
-              name: name.value,
+              name: name.value.trim(),
               branchId: carry.branch.branchId,
               serviceId: carry.service.serviceId,
-              prefix: prefix.value || undefined,
+              prefix: prefix.value.trim() || undefined,
               padWidth: Number(pad.value || 3),
               staffCount: Number(staff.value || 1),
             },
@@ -104,8 +106,18 @@ export function OnboardingPage(app) {
     );
   }
 
-  function input(id, label, type, placeholder) {
-    return h('input', { id, type, placeholder, required: type !== 'text' || true, ...(type === 'number' ? { min: '1' } : {}) });
+  function input(id, label, type, placeholder, options = {}) {
+    return h('input', {
+      id,
+      name: id,
+      type,
+      placeholder,
+      autocomplete: type === 'email' ? 'email' : 'off',
+      required: Boolean(options.required),
+      ...(options.maxlength ? { maxlength: String(options.maxlength) } : {}),
+      ...(options.min !== undefined ? { min: String(options.min) } : {}),
+      ...(options.max !== undefined ? { max: String(options.max) } : {}),
+    });
   }
 
   function wrapField(_id, label, el) {
@@ -117,6 +129,7 @@ export function OnboardingPage(app) {
     const submit = h('button', { class: 'btn btn--primary btn--lg btn--block', type: 'submit' }, 'Continue');
     return h('div', { class: 'page page--narrow' },
       h('div', { class: 'card form-card' },
+        h('p', { class: 'eyebrow' }, 'Setup'),
         h('h1', {}, title),
         h('p', { class: 'muted' }, sub),
         h('form', {
