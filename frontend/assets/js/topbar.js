@@ -3,6 +3,7 @@
 import { h } from './dom.js';
 import { auth } from './auth.js';
 import { navigate } from './router.js';
+import { theme } from './theme.js';
 
 export function renderTopbar(el, hidden = false) {
   if (!el) return;
@@ -25,6 +26,13 @@ export function renderTopbar(el, hidden = false) {
         signedIn ? h('a', { href: '/dashboard/analytics', 'data-link': true }, 'Analytics') : null,
       ),
       h('div', { class: 'topbar__actions' },
+        h('button', {
+          class: 'theme-toggle',
+          type: 'button',
+          'aria-label': 'Toggle theme',
+          'aria-pressed': theme.isDark() ? 'true' : 'false',
+          onclick: () => { theme.toggle(); renderTopbar(el, hidden); },
+        }, theme.isDark() ? '☀' : '☾'),
         signedIn
           ? h('button', {
               class: 'btn btn--ghost btn--sm',

@@ -1,5 +1,6 @@
 // Application bootstrap.
 
+import './theme.js';
 import { startRouter } from './router.js';
 import { toast } from './dom.js';
 
