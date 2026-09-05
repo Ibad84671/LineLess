@@ -423,6 +423,7 @@ input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); ou
 .queue-board__item--called { border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .queue-board__ticket { font-family: var(--mono); font-weight: 700; min-width: 74px; }
 .queue-board__item:last-child { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.queue-list__meta { display: flex; align-items: center; gap: 10px; }
 .share-card { margin-top: 18px; }
 .share-card__row { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
 .share-card__row img { border-radius: var(--radius-sm); background: #fff; padding: 6px; }
