@@ -259,21 +259,137 @@ input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); ou
 
 /* ---- customer status page ---------------------------------------------- */
 
-.status-page .turn-card { text-align: center; padding: 34px 24px; margin: 18px 0; }
-.turn-card--active {
-  border-color: color-mix(in srgb, var(--ok) 55%, transparent);
-  box-shadow: 0 0 44px rgba(52, 211, 153, 0.18);
+.status-page { max-width: 540px; margin-inline: auto; }
+
+.status-page__header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 24px; gap: 16px;
 }
-.turn-card__number {
-  font-size: clamp(3.4rem, 12vw, 6rem); font-weight: 750; letter-spacing: -0.03em;
+
+.status-page__org { min-width: 0; }
+.status-page__org .eyebrow { margin-bottom: 4px; }
+.status-page__org h1 { font-size: 1.4rem; margin: 0; }
+
+.status-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.status-card--turn {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-lg);
+}
+
+.status-card--approaching {
+  border-color: var(--warn);
+}
+
+.status-card__ticket { margin-bottom: 24px; }
+
+.status-card__label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.status-card__number {
+  font-size: clamp(3.5rem, 12vw, 6rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(120deg, var(--text), var(--accent));
+}
+
+.status-card--turn .status-card__number {
+  background: linear-gradient(120deg, var(--text) 30%, var(--accent));
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.turn-card__meta { display: flex; justify-content: center; gap: 40px; margin: 14px 0 6px; }
-.turn-card__meta .stat__value { font-size: 2rem; }
-.turn-card__note { font-size: 0.85rem; margin-top: 8px; }
-.status-page .btn--danger { margin-top: 10px; }
+
+.status-card__progress { margin-bottom: 24px; }
+
+.status-card__progress-track {
+  height: 6px;
+  background: var(--surface-strong);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.status-card__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--violet));
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+
+.status-card__stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; margin-bottom: 16px;
+}
+
+.status-card__stat {
+  padding: 12px 8px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+
+.status-card__stat-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.status-card__stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-card__hint {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.status-card__hint--turn { color: var(--accent-strong); }
+.status-card__hint--warn { color: var(--warn); }
+
+.status-done {
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.status-done__icon {
+  width: 64px; height: 64px;
+  display: grid; place-items: center;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: var(--surface-strong);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.status-done__icon--success {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok);
+}
+
+@media (max-width: 480px) {
+  .status-card__stats { grid-template-columns: 1fr; gap: 8px; }
+  .status-card { padding: 24px 16px; }
+  .status-page__header { flex-direction: column; align-items: stretch; }
+}
 
 /* ---- staff console ------------------------------------------------------ */
 
@@ -284,6 +400,7 @@ input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); ou
   padding: 14px; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius);
 }
+.console__controls-spacer { flex: 1 1 auto; }
 .console__board { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
 .console__current { text-align: center; position: sticky; top: 84px; }
 .console__big {

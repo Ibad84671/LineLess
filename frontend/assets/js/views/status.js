@@ -1,4 +1,4 @@
-// Customer live queue status: position, people ahead, estimate, now serving.
+﻿// Customer live queue status: position, people ahead, estimate, now serving.
 // Updates arrive over WebSocket; a session refetch covers missed events.
 
 import { h, clear, toast, spinner, emptyState } from '../dom.js';
@@ -13,7 +13,7 @@ export function StatusPage(app, params) {
 
   async function load() {
     clear(app);
-    app.append(spinner('Loading your queue status…'));
+    app.append(spinner('Loading your queue status...'));
     try {
       state = await api.get(`/session/${encodeURIComponent(token)}`);
       clear(app);
@@ -33,7 +33,7 @@ export function StatusPage(app, params) {
         liveStatus = status;
         const live = document.querySelector('[data-live-status]');
         if (live) {
-          live.textContent = status === 'live' ? 'LIVE' : status === 'connecting' ? 'CONNECTING…' : 'OFFLINE — RECONNECTING';
+          live.textContent = status === 'live' ? 'LIVE' : status === 'offline' ? 'OFFLINE - RECONNECTING' : 'CONNECTING...';
           live.className = `live-badge live-badge--${status}`;
         }
       },
@@ -49,79 +49,107 @@ export function StatusPage(app, params) {
         socket?.close();
         showErrorPage(app, err);
       }
-      // Keep the last known state during transient failures.
     }
   }
 
   function render() {
     const yourTurn = state.state === 'CALLED';
-    const done = state.state === 'SERVED' || state.state === 'LEFT';
+    const serving = state.state === 'SERVED';
+    const left = state.state === 'LEFT';
+    const done = serving || left;
     const queueClosed = state.queueStatus === 'CLOSED';
     const paused = state.queuePaused;
+    const approaching = !yourTurn && !done && state.peopleAhead <= 3 && state.peopleAhead > 0;
 
     app.replaceChildren(
-      h('div', { class: `page page--narrow status-page${yourTurn ? ' status-page--turn' : ''}` },
-        h('header', { class: 'page__header page__header--center' },
-          h('p', { class: 'eyebrow' }, state.orgName ?? state.queueName),
-          h('h1', {}, state.queueName),
+      h('div', { class: `page status-page${yourTurn ? ' status-page--turn' : ''}${approaching ? ' status-page--approaching' : ''}` },
+        h('header', { class: 'status-page__header' },
+          h('div', { class: 'status-page__org' },
+            h('p', { class: 'eyebrow' }, state.orgName ?? 'Queue'),
+            h('h1', {}, state.queueName),
+          ),
           h('span', { 'data-live-status': true, class: `live-badge live-badge--${liveStatus}`, role: 'status' },
-            liveStatus === 'live' ? 'LIVE' : liveStatus === 'offline' ? 'OFFLINE — RECONNECTING' : 'CONNECTING…'),
+            liveStatus === 'live' ? 'LIVE' : liveStatus === 'offline' ? 'OFFLINE - RECONNECTING' : 'CONNECTING...'),
         ),
         queueClosed || paused
           ? h('div', { class: 'card notice-card', role: 'alert' },
               h('strong', {}, paused ? 'Queue paused' : 'Queue closed'),
               h('p', { class: 'muted' }, paused
-                ? 'The queue is temporarily paused. Your spot is safe — wait times will update when it resumes.'
+                ? 'The queue is temporarily paused. Your spot is safe.'
                 : 'The queue closed. Staff will assist you directly.'),
             )
           : null,
         done
-          ? h('div', { class: 'card center-card', role: 'status' },
-              h('h2', {}, state.state === 'SERVED' ? 'Done — thanks for waiting!' : 'You left the queue'),
-              h('p', { class: 'muted' }, state.state === 'SERVED' ? 'Your queue session is complete.' : 'Your place in the queue has been released.'),
-              h('a', { href: '/join', 'data-link': true, class: 'btn btn--ghost' }, 'Join another queue'),
+          ? h('div', { class: 'status-done', role: 'status' },
+              h('div', { class: `status-done__icon${serving ? ' status-done__icon--success' : ''}` }, serving ? 'OK' : '<'),
+              h('h2', {}, serving ? 'Done - thanks for waiting!' : 'You left the queue'),
+              h('p', { class: 'muted' }, serving ? 'Your queue session is complete.' : 'Your place has been released.'),
+              h('a', { href: '/join', 'data-link': true, class: 'btn btn--primary' }, 'Find another queue'),
             )
-          : h('div', { class: `turn-card card${yourTurn ? ' turn-card--active' : ''}`, role: 'status', 'aria-live': yourTurn ? 'assertive' : 'polite' },
-              h('div', { class: 'turn-card__number', 'aria-label': yourTurn ? 'Your turn' : `Your ticket ${state.display}` }, yourTurn ? 'It’s your turn' : state.display),
-              yourTurn
-                ? h('p', { class: 'turn-card__hint' }, 'Please go to the counter now.')
-                : h('div', { class: 'turn-card__meta' },
-                    h('div', {},
-                      h('span', { class: 'stat__label' }, 'People ahead'),
-                      h('span', { class: 'stat__value' }, String(state.peopleAhead)),
-                    ),
-                    h('div', {},
-                      h('span', { class: 'stat__label' }, 'Estimated wait'),
-                      h('span', { class: 'stat__value' }, state.estimatedWaitMinutes === null ? 'Paused' : `${state.estimatedWaitMinutes} min`),
-                    ),
-                  ),
-              h('p', { class: 'muted turn-card__note' }, yourTurn ? '' : `Now serving ${state.nowServingDisplay ?? '—'} · estimate based on ${state.estimateBasis}`),
-            ),
-        !done
-          ? h('button', {
-              class: 'btn btn--danger btn--block',
-              type: 'button',
-              onclick: async (e) => {
-                if (!confirm('Leave the queue? You will lose your spot.')) return;
-                const button = e.currentTarget;
-                button.disabled = true;
-                button.textContent = 'Leaving…';
-                try {
-                  await api.post(`/session/${encodeURIComponent(token)}/leave`);
-                  socket?.close();
-                  app.replaceChildren(emptyState(
-                    'You left the queue',
-                    'Changed your mind? Join again any time.',
-                    h('a', { href: '/join', 'data-link': true, class: 'btn btn--primary' }, 'Find a queue'),
-                  ));
-                } catch (err) {
-                  button.disabled = false;
-                  button.textContent = 'Leave queue';
-                  toast(err instanceof ApiError ? err.message : 'Could not leave the queue', 'error');
-                }
-              },
-            }, 'Leave queue')
           : null,
+          !done
+            ? h('div', { class: `status-card${yourTurn ? ' status-card--turn' : ''}${approaching ? ' status-card--approaching' : ''}`, role: 'status', 'aria-live': yourTurn ? 'assertive' : 'polite' },
+                h('div', { class: 'status-card__ticket' },
+                  h('span', { class: 'status-card__label' }, yourTurn ? 'YOUR TURN' : 'YOUR TICKET'),
+                  h('strong', { class: 'status-card__number', 'aria-label': yourTurn ? 'Your turn now' : `Ticket ${state.display}` }, state.display),
+                ),
+                !yourTurn
+                  ? h('div', { class: 'status-card__progress' },
+                      h('div', { class: 'status-card__progress-track' },
+                        h('div', { class: 'status-card__progress-fill', style: `width: ${Math.max(5, 100 - (state.peopleAhead * 100 / Math.max(state.peopleAhead + state.waitingCount || 1, 1))) }%` }),
+                      ),
+                    )
+                  : null,
+                h('div', { class: 'status-card__stats' },
+                  h('div', { class: 'status-card__stat' },
+                    h('span', { class: 'status-card__stat-label' }, 'People ahead'),
+                    h('strong', { class: 'status-card__stat-value' }, String(state.peopleAhead)),
+                  ),
+                  h('div', { class: 'status-card__stat' },
+                    h('span', { class: 'status-card__stat-label' }, 'Est. wait'),
+                    h('strong', { class: 'status-card__stat-value' }, state.estimatedWaitMinutes === null ? 'Paused' : `~${state.estimatedWaitMinutes} min`),
+                  ),
+                  h('div', { class: 'status-card__stat' },
+                    h('span', { class: 'status-card__stat-label' }, 'Now serving'),
+                    h('strong', { class: 'status-card__stat-value' }, state.nowServingDisplay ?? '--'),
+                  ),
+                ),
+                approaching
+                  ? h('p', { class: 'status-card__hint status-card__hint--warn' }, 'You are almost up - get ready to head to the counter.')
+                  : null,
+                yourTurn
+                  ? h('p', { class: 'status-card__hint status-card__hint--turn' }, 'Please go to the counter now.')
+                  : null,
+                !yourTurn && !approaching
+                  ? h('p', { class: 'status-card__hint muted' }, `Estimate based on ${state.estimateBasis}.`)
+                  : null,
+              )
+            : null,
+            !done
+              ? h('button', {
+                  class: 'btn btn--danger btn--block',
+                  type: 'button',
+                  onclick: async (e) => {
+                    if (!confirm('Leave the queue? You will lose your spot.')) return;
+                    const button = e.currentTarget;
+                    button.disabled = true;
+                    button.textContent = 'Leaving...';
+                    try {
+                      await api.post(`/session/${encodeURIComponent(token)}/leave`);
+                      socket?.close();
+                      app.replaceChildren(emptyState(
+                        'You left the queue',
+                        'Changed your mind? Join again any time.',
+                        h('a', { href: '/join', 'data-link': true, class: 'btn btn--primary' }, 'Find a queue'),
+                      ));
+                    } catch (err) {
+                      button.disabled = false;
+                      button.textContent = 'Leave queue';
+                      toast(err instanceof ApiError ? err.message : 'Could not leave the queue', 'error');
+                    }
+                  },
+                }, 'Leave queue')
+              : null,
       ),
     );
   }
