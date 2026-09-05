@@ -9,7 +9,8 @@ import { StatusPage } from './views/status.js';
 import { DisplayPage } from './views/display.js';
 import { LoginPage } from './views/login.js';
 import { SignupPage } from './views/signup.js';
-import { DashboardPage, QueueConsolePage, AnalyticsPage } from './views/dashboard.js';
+import { DashboardPage, AnalyticsPage } from './views/dashboard.js';
+import { QueueConsolePage } from './views/console.js';
 import { OnboardingPage } from './views/onboarding.js';
 import { NotFoundPage } from './views/notfound.js';
 
