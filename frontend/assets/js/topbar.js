@@ -12,8 +12,10 @@ export function renderTopbar(el, hidden = false) {
     el.replaceChildren();
     return;
   }
+
   el.hidden = false;
   const signedIn = auth.isAuthenticated();
+  const dark = theme.isDark();
   el.replaceChildren(
     h('div', { class: 'topbar__inner' },
       h('a', { href: '/', 'data-link': true, class: 'brand', 'aria-label': 'LineLess home' },
@@ -29,10 +31,11 @@ export function renderTopbar(el, hidden = false) {
         h('button', {
           class: 'theme-toggle',
           type: 'button',
-          'aria-label': 'Toggle theme',
-          'aria-pressed': theme.isDark() ? 'true' : 'false',
+          'aria-label': dark ? 'Switch to light mode' : 'Switch to dark mode',
+          'aria-pressed': dark ? 'true' : 'false',
+          title: dark ? 'Switch to light mode' : 'Switch to dark mode',
           onclick: () => { theme.toggle(); renderTopbar(el, hidden); },
-        }, theme.isDark() ? '☀' : '☾'),
+        }, dark ? '☀' : '☾'),
         signedIn
           ? h('button', {
               class: 'btn btn--ghost btn--sm',
