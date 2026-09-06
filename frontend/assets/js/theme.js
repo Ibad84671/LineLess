@@ -2,53 +2,37 @@
 // localStorage persistence, and no flash of incorrect theme.
 
 const STORAGE_KEY = 'lineless.theme';
+const META_THEME = { dark: '#0b0e14', light: '#f6f8fb' };
 
 function getSystemPreference() {
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-    return 'light';
-  }
-  return 'dark';
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
 function getStoredTheme() {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
 }
 
 function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
+  const next = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', META_THEME[next]);
 }
 
 export const theme = {
   init() {
-    const stored = getStoredTheme();
-    const initial = stored || getSystemPreference();
-    applyTheme(initial);
+    applyTheme(getStoredTheme() || getSystemPreference());
   },
 
   toggle() {
-    const current = document.documentElement.getAttribute('data-theme') || 'dark';
-    const next = current === 'dark' ? 'light' : 'dark';
+    const next = this.isDark() ? 'light' : 'dark';
     applyTheme(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // storage unavailable; theme still applies for this session
-    }
+    try { localStorage.setItem(STORAGE_KEY, next); } catch { /* session-only fallback */ }
     return next;
   },
 
-  isDark() {
-    return (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
-  },
-
-  current() {
-    return document.documentElement.getAttribute('data-theme') || 'dark';
-  },
+  isDark() { return (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark'; },
+  current() { return document.documentElement.getAttribute('data-theme') || 'dark'; },
 };
 
-// Apply theme immediately to prevent flash
 theme.init();
