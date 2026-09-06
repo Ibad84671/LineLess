@@ -24,13 +24,9 @@ export async function inviteStaff(ctx, orgId, { email, role, name }, { store = d
 
   let sub;
   if (cognitoAdmin) {
-    // Real deployment: create the Cognito user so the invitee can sign in
-    // immediately with a temporary password (they change it on first login).
     const res = await cognitoAdmin(staffEmail);
     sub = res.sub;
   } else {
-    // Offline/tests: record is linked to the real Cognito sub at first login
-    // (see linkStaffOnSignup).
     sub = `pending:${opaqueId(8)}`;
   }
 
@@ -54,8 +50,7 @@ export async function inviteStaff(ctx, orgId, { email, role, name }, { store = d
   return { email: staffEmail, role: staffRole, status: pending ? 'PENDING_LINK' : 'ACTIVE' };
 }
 
-/** On first authenticated request, links PENDING_LINK staff records (matched
- * by verified email) to the real Cognito sub. Server-side only. */
+/** On first authenticated request, links PENDING_LINK staff records to the real Cognito sub. */
 export async function linkStaffOnSignup(ctx, { store = db() } = {}) {
   if (!ctx.email || !ctx.sub) return;
   const res = await store.query({
@@ -91,12 +86,7 @@ export async function listStaff(ctx, orgId, { store = db() } = {}) {
     KeyConditionExpression: 'PK = :o AND begins_with(SK, :s)',
     ExpressionAttributeValues: { ':o': keys.orgMeta(orgId).PK, ':s': 'STAFF#' },
   });
-  return res.items.map((s) => ({
-    email: s.email,
-    role: s.role,
-    status: s.status,
-    name: s.name ?? null,
-  }));
+  return res.items.map((s) => ({ email: s.email, role: s.role, status: s.status, name: s.name ?? null }));
 }
 
 export async function updateStaffRole(ctx, orgId, { email, role }, { store = db() } = {}) {
@@ -119,18 +109,45 @@ export async function updateStaffRole(ctx, orgId, { email, role }, { store = db(
   return { email: staffEmail, role: newRole };
 }
 
+/**
+ * Public directory data is deliberately limited to discoverable organization
+ * and queue metadata. Customer/contact records and operational staff data
+ * never leave the authenticated API surface.
+ */
 export async function listPublicDirectory({ store = db() } = {}) {
-  // Only organizations that explicitly opted in appear here.
   const res = await store.query({
     IndexName: 'GSI1',
     KeyConditionExpression: 'GSI1PK = :dir',
     ExpressionAttributeValues: { ':dir': 'DIR#PUBLIC' },
   });
-  return res.items.map((o) => ({
-    orgId: o.orgId,
-    name: o.name,
-    location: o.location ?? null,
-  }));
+
+  const organizations = [];
+  for (const o of res.items) {
+    const queueIndex = await store.query({
+      KeyConditionExpression: 'PK = :o AND begins_with(SK, :q)',
+      ExpressionAttributeValues: { ':o': keys.orgMeta(o.orgId).PK, ':q': 'QUEUE#' },
+    });
+    const queueMeta = queueIndex.items.length
+      ? await store.batchGet(queueIndex.items.map((q) => keys.queueMeta(q.queueId)))
+      : [];
+    const byId = new Map(queueMeta.map((q) => [q.queueId, q]));
+    const queues = queueIndex.items
+      .map((q) => byId.get(q.queueId))
+      .filter((q) => q?.isPublic !== false)
+      .map((q) => ({
+        queueId: q.queueId,
+        name: q.name,
+        description: q.description ?? null,
+        branchName: q.branchName ?? null,
+        serviceName: q.serviceName ?? null,
+        status: q.status,
+        paused: Boolean(q.paused),
+        waitingCount: Number(q.waitingCount ?? 0),
+      }));
+
+    organizations.push({ orgId: o.orgId, name: o.name, location: o.location ?? null, queues });
+  }
+  return organizations;
 }
 
 export async function publishOrganization(ctx, orgId, { publish, location }, { store = db() } = {}) {
