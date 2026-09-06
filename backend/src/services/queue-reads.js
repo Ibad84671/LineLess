@@ -40,6 +40,9 @@ async function countWaiting(store, queueId) {
 export async function getPublicQueue(queueId, { store = db() } = {}) {
   const queue = await loadQueue(queueId, store);
   const waitingCount = await countWaiting(store, queueId);
+  const avgServiceMinutes = queue.avgServiceMs
+    ? Math.max(1, Math.round(queue.avgServiceMs / 60000))
+    : null;
   return {
     queueId,
     orgId: queue.orgId,
@@ -55,9 +58,7 @@ export async function getPublicQueue(queueId, { store = db() } = {}) {
     prefix: queue.prefix,
     padWidth: queue.padWidth,
     waitingCount,
-    avgWaitMinutes: queue.avgServiceMs
-      ? Math.max(1, Math.round(queue.avgServiceMs / 60000))
-      : null,
+    avgServiceMinutes,
   };
 }
 
@@ -129,7 +130,6 @@ export async function getCustomerSession(token, { store = db(), now = () => new 
 }
 
 async function countWaitingBeforeMe(store, queue, ticket) {
-  // No one can be ahead of ticket #1
   if (ticket <= 1) return 0;
   const res = await store.query({
     KeyConditionExpression: 'PK = :p AND SK BETWEEN :lo AND :hi',
