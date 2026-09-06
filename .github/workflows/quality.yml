@@ -39,5 +39,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Validate CloudFormation syntax
-        run: node -e "const fs=require('fs'); const yaml=require('js-yaml'); yaml.load(fs.readFileSync('infrastructure/lineless.yaml','utf8')); console.log('CloudFormation YAML parsed successfully')"
+      - name: Validate CloudFormation YAML syntax
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const yaml = require('js-yaml');
+          const source = fs.readFileSync('infrastructure/lineless.yaml', 'utf8');
+          // js-yaml does not understand CloudFormation's intrinsic !Ref/!Sub/!If
+          // tags by default. Strip only the tag markers for a syntax-level parse;
+          // AWS CloudFormation remains the semantic validator during deployment.
+          yaml.load(source.replace(/!([A-Za-z][A-Za-z0-9]*)\b/g, ''));
+          console.log('CloudFormation YAML syntax parsed successfully');
+          NODE
