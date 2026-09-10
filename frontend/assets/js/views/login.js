@@ -4,6 +4,7 @@
 import { h, toast } from '../dom.js';
 import { auth } from '../auth.js';
 import { navigate } from '../router.js';
+import { icon } from '../icons.js';
 
 function formCard(title, sub, ...children) {
   return h('div', { class: 'page page--narrow' },
@@ -15,6 +16,32 @@ function formCard(title, sub, ...children) {
   );
 }
 
+/**
+ * Password input with an accessible show/hide toggle.
+ * @returns {{input: HTMLInputElement, field: HTMLDivElement}}
+ */
+function passwordField(id, label, { autocomplete, minlength, placeholder } = {}) {
+  const input = h('input', {
+    id, type: 'password', required: true, placeholder,
+    ...(autocomplete ? { autocomplete } : {}),
+    ...(minlength ? { minlength: String(minlength) } : {}),
+  });
+  const toggle = h('button', {
+    class: 'input-toggle', type: 'button', 'aria-label': 'Show password',
+    onclick: () => {
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      toggle.replaceChildren(icon(show ? 'eyeOff' : 'eye'));
+      toggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    },
+  }, icon('eye'));
+  const field = h('div', { class: 'field' },
+    h('label', { for: id }, label),
+    h('div', { class: 'input-wrap' }, input, toggle),
+  );
+  return { input, field };
+}
+
 export function LoginPage(app) {
   if (auth.isAuthenticated()) {
     navigate('/dashboard');
@@ -23,7 +50,7 @@ export function LoginPage(app) {
   let challengeContext = null;
 
   const emailInput = h('input', { id: 'email', type: 'email', required: true, autocomplete: 'username', placeholder: 'you@business.com' });
-  const passInput = h('input', { id: 'password', type: 'password', required: true, autocomplete: 'current-password' });
+  const pass = passwordField('password', 'Password', { autocomplete: 'current-password' });
   const submit = h('button', { class: 'btn btn--primary btn--lg btn--block', type: 'submit' }, 'Sign in');
 
   function renderLogin() {
@@ -35,7 +62,7 @@ export function LoginPage(app) {
             submit.disabled = true;
             submit.textContent = 'Signing in…';
             try {
-              const result = await auth.signIn(emailInput.value.trim(), passInput.value);
+              const result = await auth.signIn(emailInput.value.trim(), pass.input.value);
               if (result.challenge === 'NEW_PASSWORD_REQUIRED') {
                 challengeContext = result.session;
                 showNewPassword(emailInput.value.trim());
@@ -52,11 +79,11 @@ export function LoginPage(app) {
           },
         },
           h('div', { class: 'field' }, h('label', { for: 'email' }, 'Email'), emailInput),
-          h('div', { class: 'field' }, h('label', { for: 'password' }, 'Password'), passInput),
+          pass.field,
           submit,
         ),
         h('div', { class: 'auth-links' },
-          h('a', { href: '#', onclick: (e) => { e.preventDefault(); showForgot(); } }, 'Forgot password?'),
+          h('button', { class: 'link-btn', type: 'button', onclick: () => showForgot() }, 'Forgot password?'),
           h('a', { href: '/signup', 'data-link': true }, 'Create a business account'),
         ),
       ),
@@ -88,9 +115,11 @@ export function LoginPage(app) {
   function showForgot() {
     const fe = h('input', { id: 'fe', type: 'email', required: true, autocomplete: 'username' });
     const fc = h('input', { id: 'fc', type: 'text', required: false, inputmode: 'numeric', placeholder: '6-digit code' });
-    const fp = h('input', { id: 'fp', type: 'password', required: false, autocomplete: 'new-password', minlength: '8' });
+    const fp = passwordField('fp', 'New password', { autocomplete: 'new-password', minlength: 8 });
+    fp.input.required = false;
     const fcField = h('div', { class: 'field', hidden: true }, h('label', { for: 'fc' }, 'Code'), fc);
-    const fpField = h('div', { class: 'field', hidden: true }, h('label', { for: 'fp' }, 'New password'), fp);
+    const fpField = fp.field;
+    fpField.hidden = true;
     const btn = h('button', { class: 'btn btn--primary btn--lg btn--block', type: 'submit' }, 'Send code');
     let step = 0;
 
@@ -106,11 +135,11 @@ export function LoginPage(app) {
                 fcField.hidden = false;
                 fpField.hidden = false;
                 fc.required = true;
-                fp.required = true;
+                fp.input.required = true;
                 btn.textContent = 'Set new password';
                 toast('Check your email for the code.', 'info');
               } else {
-                await auth.confirmForgotPassword(fe.value.trim(), fc.value.trim(), fp.value);
+                await auth.confirmForgotPassword(fe.value.trim(), fc.value.trim(), fp.input.value);
                 toast('Password updated. Sign in now.', 'success');
                 renderLogin();
               }
@@ -132,4 +161,4 @@ export function LoginPage(app) {
   return null;
 }
 
-export { formCard };
+export { formCard, passwordField };

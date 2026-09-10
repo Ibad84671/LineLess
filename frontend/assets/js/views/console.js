@@ -5,6 +5,7 @@ import { h, clear, toast, spinner } from '../dom.js';
 import { api, ApiError } from '../api.js';
 import { QueueSocket } from '../ws.js';
 import { showError } from './join.js';
+import { icon } from '../icons.js';
 
 export function QueueConsolePage(app, params) {
   const { queueId } = params;
@@ -80,18 +81,18 @@ export function QueueConsolePage(app, params) {
           kpi('Avg. service', state.avgServiceMinutes ? `${state.avgServiceMinutes} min` : '—'),
         ),
         h('div', { class: 'console__controls', role: 'toolbar', 'aria-label': 'Queue controls' },
-          h('button', { class: 'btn btn--primary btn--lg', disabled: !open || paused, onclick: () => mutate('next') }, 'CALL NEXT'),
-          h('button', { class: 'btn btn--ghost', disabled: !state.nowServing || !open || paused, onclick: () => mutate('recall') }, 'RECALL'),
-          h('button', { class: 'btn btn--ghost', disabled: !state.nowServing || !open || paused, onclick: () => mutate('skip', 'Skip the current customer?') }, 'SKIP'),
+          h('button', { class: 'btn btn--primary btn--lg', disabled: !open || paused, onclick: () => mutate('next') }, icon('play', { size: 16 }), 'Call next'),
+          h('button', { class: 'btn btn--ghost', disabled: !state.nowServing || !open || paused, onclick: () => mutate('recall') }, icon('refresh', { size: 16 }), 'Recall'),
+          h('button', { class: 'btn btn--ghost', disabled: !state.nowServing || !open || paused, onclick: () => mutate('skip', 'Skip the current customer?') }, icon('skipForward', { size: 16 }), 'Skip'),
           open
             ? (paused
-                ? h('button', { class: 'btn btn--ghost', onclick: () => mutate('resume') }, 'RESUME')
-                : h('button', { class: 'btn btn--ghost', onclick: () => mutate('pause') }, 'PAUSE'))
-            : h('button', { class: 'btn btn--ghost', onclick: () => mutate('reopen') }, 'REOPEN QUEUE'),
+                ? h('button', { class: 'btn btn--ghost', onclick: () => mutate('resume') }, icon('play', { size: 16 }), 'Resume')
+                : h('button', { class: 'btn btn--ghost', onclick: () => mutate('pause') }, icon('pause', { size: 16 }), 'Pause'))
+            : h('button', { class: 'btn btn--ghost', onclick: () => mutate('reopen') }, icon('refresh', { size: 16 }), 'Reopen queue'),
           open
-            ? h('button', { class: 'btn btn--danger', onclick: () => mutate('close', 'Close this queue? Waiting customers will be notified.') }, 'CLOSE QUEUE')
+            ? h('button', { class: 'btn btn--danger', onclick: () => mutate('close', 'Close this queue? Waiting customers will be notified.') }, icon('x', { size: 16 }), 'Close queue')
             : null,
-          h('a', { class: 'btn btn--ghost', href: `/display/${encodeURIComponent(queueId)}`, 'data-link': true }, 'DISPLAY VIEW'),
+          h('a', { class: 'btn btn--ghost', href: `/display/${encodeURIComponent(queueId)}`, 'data-link': true }, icon('qrCode', { size: 16 }), 'Display view'),
         ),
         h('div', { class: 'console__board' },
           h('section', { class: 'card console__current', 'aria-label': 'Current customer' },
@@ -121,7 +122,7 @@ export function QueueConsolePage(app, params) {
                   state.entries.filter((e) => e.state === 'CALLED').map((e) =>
                     h('li', { class: 'queue-board__item queue-board__item--called' },
                       h('span', { class: 'queue-board__ticket' }, e.display),
-                      h('span', { class: 'muted' }, e.callCount > 1 ? `recalled ×${e.callCount - 1}` : 'waiting for customer'),
+                      h('span', { class: 'muted' }, e.recallCount > 0 ? `recalled ×${e.recallCount}` : 'waiting for customer'),
                     )),
                 ),
               )

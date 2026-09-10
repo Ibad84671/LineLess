@@ -3,6 +3,7 @@
 import { h, clear, toast, spinner, emptyState } from '../dom.js';
 import { api, ApiError } from '../api.js';
 import { showError } from './join.js';
+import { icon } from '../icons.js';
 
 export function DashboardPage(app) {
   async function load() {
@@ -33,8 +34,8 @@ export function DashboardPage(app) {
               h('h1', {}, org.name),
             ),
             h('div', { class: 'topbar__actions' },
-              h('a', { href: '/dashboard/analytics', 'data-link': true, class: 'btn btn--ghost' }, 'Analytics'),
-              h('a', { href: '/onboarding', 'data-link': true, class: 'btn btn--primary' }, 'New queue'),
+              h('a', { href: '/dashboard/analytics', 'data-link': true, class: 'btn btn--ghost' }, icon('activity', { size: 16 }), 'Analytics'),
+              h('a', { href: '/onboarding', 'data-link': true, class: 'btn btn--primary' }, icon('plus', { size: 16 }), 'New queue'),
             ),
           ),
           queues.length === 0
@@ -92,14 +93,14 @@ function buildStaffInvite(org) {
         h('option', { value: 'MANAGER' }, 'Manager'),
         h('option', { value: 'ORGANIZATION_ADMIN' }, 'Admin'),
       ),
-      h('button', { class: 'btn btn--primary', type: 'submit' }, 'Invite'),
+      h('button', { class: 'btn btn--primary', type: 'submit' }, icon('plus', { size: 15 }), 'Invite'),
     ),
   );
 }
 
-function kpi(label, value) {
+function kpi(label, value, iconName = null) {
   return h('div', { class: 'stat' },
-    h('span', { class: 'stat__label' }, label),
+    h('span', { class: 'stat__label' }, iconName ? icon(iconName, { size: 13 }) : null, label),
     h('span', { class: 'stat__value' }, value),
   );
 }
@@ -128,11 +129,11 @@ export function AnalyticsPage(app) {
             h('h1', {}, 'Analytics'),
           ),
           h('div', { class: 'stat-row' },
-            kpi('Joined', String(data.totals.joined)),
-            kpi('Served', String(data.totals.served)),
-            kpi('No-show rate', `${data.totals.noShowRate}%`),
-            kpi('Avg. wait', data.totals.avgWaitMinutes !== null ? `${data.totals.avgWaitMinutes} min` : '—'),
-            kpi('Avg. service', data.totals.avgServiceMinutes !== null ? `${data.totals.avgServiceMinutes} min` : '—'),
+            kpi('Joined', String(data.totals.joined), 'users'),
+            kpi('Served', String(data.totals.served), 'check'),
+            kpi('No-show rate', `${data.totals.noShowRate}%`, 'x'),
+            kpi('Avg. wait', data.totals.avgWaitMinutes !== null ? `${data.totals.avgWaitMinutes} min` : '—', 'clock'),
+            kpi('Avg. service', data.totals.avgServiceMinutes !== null ? `${data.totals.avgServiceMinutes} min` : '—', 'gauge'),
           ),
           data.perQueue.length === 0
             ? emptyState('No queue activity yet', 'Data appears as customers join your queues.')

@@ -3,10 +3,13 @@
 import { h, clear, toast, spinner, emptyState } from '../dom.js';
 import { api, ApiError } from '../api.js';
 import { navigate } from '../router.js';
+import { icon } from '../icons.js';
 
 export function JoinDirectoryPage(app) {
   let organizations = [];
-  let selectedOrgId = new URLSearchParams(location.search).get('org');
+  const params = new URLSearchParams(location.search);
+  let selectedOrgId = params.get('org');
+  let query = params.get('q') ?? '';
 
   async function load() {
     clear(app);
@@ -32,6 +35,7 @@ export function JoinDirectoryPage(app) {
       'aria-label': 'Search businesses and services',
       placeholder: 'Search businesses, services or locations',
     });
+    if (query) search.value = query;
     const list = h('div', { class: 'directory-list', 'aria-live': 'polite' });
 
     function draw(query = '') {
@@ -46,17 +50,20 @@ export function JoinDirectoryPage(app) {
         .filter((org) => org.queues.length > 0 || (!needle && !selected));
 
       list.replaceChildren(
-        matches.length
+        ...(matches.length
           ? matches.map((org) => organizationCard(org))
-          : emptyState(
+          : [emptyState(
               'No matching queues',
               selected ? 'This business has no public queues matching your search.' : 'Try a different business, service or location.',
               selected ? h('button', { class: 'btn btn--ghost', type: 'button', onclick: () => { selectedOrgId = null; render(); } }, 'View all businesses') : null,
-            ),
+            )]),
       );
     }
 
-    search.addEventListener('input', () => draw(search.value));
+    search.addEventListener('input', () => {
+      query = search.value;
+      draw(query);
+    });
 
     app.append(
       h('div', { class: 'page' },
@@ -68,7 +75,10 @@ export function JoinDirectoryPage(app) {
             : 'Find a public queue, see what is available, and join without waiting at the counter.'),
         ),
         h('div', { class: 'directory-toolbar' },
-          search,
+          h('div', { class: 'search-box' },
+            icon('search', { size: 16 }),
+            search,
+          ),
           selected ? h('button', { class: 'btn btn--ghost', type: 'button', onclick: () => { selectedOrgId = null; render(); } }, 'All businesses') : null,
         ),
         list,
@@ -87,7 +97,9 @@ function organizationCard(org) {
     h('div', {},
       h('div', { class: 'directory-org__meta' },
         h('strong', {}, org.name),
-        org.location ? h('span', { class: 'muted' }, org.location) : null,
+        org.location
+          ? h('span', { class: 'org-loc' }, icon('mapPin', { size: 14 }), org.location)
+          : null,
         h('span', { class: 'muted' }, `${openQueues.length} ${openQueues.length === 1 ? 'queue' : 'queues'} available`),
       ),
       h('div', { class: 'directory-org__queues' },
@@ -106,11 +118,17 @@ function queueLink(q) {
     'aria-disabled': open ? 'false' : 'true',
     onclick: open ? undefined : (e) => e.preventDefault(),
   },
-    h('span', {},
+    h('span', { class: 'directory-queue__info' },
       h('strong', {}, q.name),
       h('span', { class: 'muted' }, [q.serviceName, q.branchName].filter(Boolean).join(' · ') || 'Service queue'),
     ),
-    h('span', { class: `badge ${open ? 'badge--open' : 'badge--closed'}` }, q.paused ? 'PAUSED' : q.status),
+    h('span', { class: 'directory-queue__warm' },
+      open
+        ? h('span', { class: 'muted' }, icon('users', { size: 15 }), ` ${q.waitingCount ?? 0} waiting`)
+        : null,
+      h('span', { class: `badge ${open ? 'badge--open' : 'badge--closed'}` }, q.paused ? 'PAUSED' : q.status),
+      open ? icon('arrowRight', { size: 15 }) : null,
+    ),
   );
 }
 

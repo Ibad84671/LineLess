@@ -1,0 +1,102 @@
+﻿flowchart TB
+
+    %% =========================
+    %% CLIENT LAYER
+    %% =========================
+    Customer["Customer"]
+    Staff["Staff / Manager"]
+    Display["Reception / TV Display"]
+
+    %% =========================
+    %% EDGE / FRONTEND
+    %% =========================
+    CF["Amazon CloudFront"]
+    S3["Private S3 Frontend<br/>Origin Access Control"]
+
+    Customer --> CF
+    Staff --> CF
+    Display --> CF
+    CF --> S3
+
+    %% =========================
+    %% API / REALTIME
+    %% =========================
+    API["API Gateway<br/>REST / HTTP"]
+    WS["API Gateway<br/>WebSocket"]
+
+    CF --> API
+    CF --> WS
+
+    %% =========================
+    %% AUTH
+    %% =========================
+    Cognito["Amazon Cognito<br/>Authentication"]
+
+    Staff -.-> Cognito
+    Customer -.-> Cognito
+
+    %% =========================
+    %% COMPUTE
+    %% =========================
+    Lambda["AWS Lambda<br/>Application Services"]
+
+    API --> Lambda
+    WS --> Lambda
+
+    %% =========================
+    %% DATABASE
+    %% =========================
+    Dynamo["Amazon DynamoDB<br/>Queue Source of Truth"]
+
+    Lambda --> Dynamo
+
+    %% =========================
+    %% EVENTS
+    %% =========================
+    EventBridge["Amazon EventBridge<br/>Domain Events"]
+    SQS["Amazon SQS<br/>Notification Queue"]
+    DLQ["SQS Dead Letter Queue"]
+    Notify["Notification Lambda"]
+    SES["Amazon SES<br/>Email"]
+    SNS["Amazon SNS<br/>SMS / Notifications"]
+
+    Lambda --> EventBridge
+    EventBridge --> SQS
+    SQS --> Notify
+    SQS --> DLQ
+    Notify --> SES
+    Notify --> SNS
+
+    %% =========================
+    %% OBSERVABILITY
+    %% =========================
+    CW["Amazon CloudWatch<br/>Logs / Metrics / Alarms"]
+
+    Lambda --> CW
+    API --> CW
+    WS --> CW
+
+    %% =========================
+    %% QUEUE REALTIME
+    %% =========================
+    Dynamo --> WS
+    WS --> Customer
+    WS --> Staff
+    WS --> Display
+
+    %% =========================
+    %% STYLING
+    %% =========================
+    classDef client fill:#f5f5f5,stroke:#333,color:#111
+    classDef aws fill:#fff3e0,stroke:#ff9900,color:#111
+    classDef data fill:#e8f5e9,stroke:#2e7d32,color:#111
+    classDef event fill:#e3f2fd,stroke:#1976d2,color:#111
+    classDef security fill:#fce4ec,stroke:#c2185b,color:#111
+    classDef observability fill:#ede7f6,stroke:#512da8,color:#111
+
+    class Customer,Staff,Display client
+    class CF,S3,API,WS,Lambda aws
+    class Dynamo data
+    class EventBridge,SQS,DLQ,Notify,SES,SNS event
+    class Cognito security
+    class CW observability

@@ -185,6 +185,7 @@ export async function getQueueState(queueId, { store = db() } = {}) {
       joinedAt: e.joinedAt,
       calledAt: e.calledAt ?? null,
       callCount: e.callCount ?? 0,
+      recallCount: e.recallCount ?? 0,
       estimateMinutes,
     };
   });

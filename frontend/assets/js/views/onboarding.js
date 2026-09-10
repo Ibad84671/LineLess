@@ -3,6 +3,7 @@
 import { h, toast } from '../dom.js';
 import { api, ApiError } from '../api.js';
 import { navigate } from '../router.js';
+import { icon } from '../icons.js';
 
 export function OnboardingPage(app) {
   const step1 = buildStep(
@@ -21,6 +22,7 @@ export function OnboardingPage(app) {
       }
       next({ org });
     },
+    'store',
   );
 
   const step2 = buildStep(
@@ -37,6 +39,7 @@ export function OnboardingPage(app) {
       });
       next({ branch });
     },
+    'mapPin',
   );
 
   const step3 = buildStep(
@@ -53,10 +56,12 @@ export function OnboardingPage(app) {
       });
       next({ service });
     },
+    'sliders',
   );
 
   const step4 = h('div', { class: 'page page--narrow' },
     h('div', { class: 'card form-card' },
+      h('div', { class: 'step-icon' }, icon('zap')),
       h('p', { class: 'eyebrow' }, 'Final step'),
       h('h1', {}, 'Create your queue'),
       h('p', { class: 'muted' }, 'Set the ticket format and number of serving counters. You can manage the queue after setup.'),
@@ -124,11 +129,12 @@ export function OnboardingPage(app) {
     return h('div', { class: 'field' }, h('label', { for: el.id }, label), el);
   }
 
-  function buildStep(title, sub, fields, onSubmit) {
+  function buildStep(title, sub, fields, onSubmit, stepIconName) {
     const els = fields;
     const submit = h('button', { class: 'btn btn--primary btn--lg btn--block', type: 'submit' }, 'Continue');
     return h('div', { class: 'page page--narrow' },
       h('div', { class: 'card form-card' },
+        h('div', { class: 'step-icon' }, icon(stepIconName)),
         h('p', { class: 'eyebrow' }, 'Setup'),
         h('h1', {}, title),
         h('p', { class: 'muted' }, sub),
@@ -174,7 +180,19 @@ export function OnboardingPage(app) {
   }
 
   function renderStep() {
-    app.replaceChildren(steps[index]);
+    app.replaceChildren(
+      h('div', { class: 'page page--narrow' },
+        h('div', { class: 'stepper', 'aria-label': `Setup step ${index + 1} of 4` },
+          [0, 1, 2, 3].map((i) =>
+            h('div', {
+              class: `stepper__step ${i < index ? 'stepper__step--done' : ''}${i === index ? ' stepper__step--active' : ''}`,
+              'aria-hidden': 'true',
+            }),
+          ),
+        ),
+        steps[index],
+      ),
+    );
   }
 
   renderStep();

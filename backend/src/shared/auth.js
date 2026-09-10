@@ -99,12 +99,6 @@ export function extractBearer(event) {
 
 // ---- Authorization context ----------------------------------------------
 
-function badRequestOrgRequired(memberships) {
-  const err = forbidden('Organization context required');
-  err.details = { organizations: memberships.items.map((m) => m.orgId) };
-  return err;
-}
-
 /**
  * Resolves the caller's role for an organization from DynamoDB.
  * The role comes from the staff record, never from the token.
@@ -134,22 +128,13 @@ export async function resolveContext(event, { orgId, minRole } = {}) {
       role = member.role;
     }
     if (!role) throw forbidden('You are not a member of this organization');
-  } else if (!role) {
-    // Cognito user with no org membership yet (onboarding state) — allowed
-    // through with role null so they can create an organization.
-    if (memberships.items.length === 0) {
-      return {
-        sub,
-        email: payload.username || null,
-        role: null,
-        orgId: null,
-        memberships: [],
-      };
-    }
-    throw badRequestOrgRequired(memberships);
   }
 
-  if (minRole && role && !hasAtLeast(role, minRole)) {
+  // 'self' routes (no org context) reach here with role = null and the
+  // caller's memberships attached — routes like GET /me use them to discover
+  // the caller's organizations. Any minRole requirement is enforced below
+  // (hasAtLeast treats a null role as insufficient).
+  if (minRole && !hasAtLeast(role, minRole)) {
     throw forbidden(`Requires ${minRole} role`);
   }
   return {

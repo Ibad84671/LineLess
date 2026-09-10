@@ -2,6 +2,8 @@
 // data is NEVER assigned via innerHTML — this is the frontend's XSS
 // defense-in-depth (backend also sanitizes at write time).
 
+import { icon } from './icons.js';
+
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs ?? {})) {
@@ -11,7 +13,7 @@ export function h(tag, attrs = {}, ...children) {
     else if (key.startsWith('on') && typeof value === 'function') {
       el.addEventListener(key.slice(2).toLowerCase(), value);
     } else if (key === 'value') el.value = value;
-    else if (key === 'checked' || key === 'disabled' || key === 'required' || key === 'selected') {
+    else if (key === 'checked' || key === 'disabled' || key === 'required' || key === 'selected' || key === 'hidden') {
       el[key] = Boolean(value);
     } else {
       el.setAttribute(key, String(value));
@@ -35,7 +37,10 @@ export function clear(el) {
 export function toast(message, kind = 'info', timeout = 4000) {
   const root = document.getElementById('toast-root');
   if (!root) return;
-  const node = h('div', { class: `toast toast--${kind}`, role: 'status' }, message);
+  const node = h('div', { class: `toast toast--${kind}`, role: 'status' },
+    h('span', { class: 'toast__dot', 'aria-hidden': 'true' }),
+    h('span', {}, message),
+  );
   root.append(node);
   requestAnimationFrame(() => node.classList.add('toast--in'));
   setTimeout(() => {
@@ -50,9 +55,12 @@ export function spinner(label = 'Loading…') {
   );
 }
 
-export function emptyState(title, hint, action) {
+/** @param {string} [iconName] icon key rendered above the message */
+export function emptyState(title, hint, action, iconName = null) {
   return h('div', { class: 'empty-state' },
-    h('div', { class: 'empty-state__glow', 'aria-hidden': 'true' }),
+    iconName
+      ? h('div', { class: 'empty-state__icon', 'aria-hidden': 'true' }, icon(iconName, { size: 26 }))
+      : null,
     h('h2', {}, title),
     hint ? h('p', { class: 'muted' }, hint) : null,
     action ?? null,

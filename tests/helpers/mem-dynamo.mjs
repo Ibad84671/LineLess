@@ -484,9 +484,12 @@ export function createMemDynamo() {
     return {};
   }
 
-  async function batchGet(args) {
+  async function batchGet(keys) {
+    // Interface parity with backend/src/shared/dynamo.js: takes a plain array
+    // of Key objects and returns the found items.
     await yieldToEventLoop();
-    return args.Keys.map((k) => table.get(keyOf(k)) ?? null).filter(Boolean);
+    const list = Array.isArray(keys) ? keys : keys?.Keys ?? [];
+    return list.map((k) => table.get(keyOf(k)) ?? null).filter(Boolean);
   }
 
   return {

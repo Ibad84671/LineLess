@@ -3,12 +3,12 @@
 import { h, toast } from '../dom.js';
 import { auth } from '../auth.js';
 import { navigate } from '../router.js';
-import { formCard } from './login.js';
+import { formCard, passwordField } from './login.js';
 
 export function SignupPage(app) {
   const nameInput = h('input', { id: 'su-name', type: 'text', required: true, autocomplete: 'name', placeholder: 'Your name' });
   const emailInput = h('input', { id: 'su-email', type: 'email', required: true, autocomplete: 'username', placeholder: 'you@business.com' });
-  const passInput = h('input', { id: 'su-pass', type: 'password', required: true, autocomplete: 'new-password', minlength: '8' });
+  const pass = passwordField('su-pass', 'Password (min 8 chars)', { autocomplete: 'new-password', minlength: 8 });
   const codeInput = h('input', { id: 'su-code', type: 'text', inputmode: 'numeric' });
   const codeWrap = h('div', { class: 'field', hidden: true },
     h('label', { for: 'su-code' }, 'Verification code (check your email)'), codeInput);
@@ -24,11 +24,11 @@ export function SignupPage(app) {
           submit.textContent = emailConfirmed ? 'Verifying…' : 'Creating account…';
           try {
             if (!emailConfirmed) {
-              await auth.signUp(emailInput.value.trim(), passInput.value, nameInput.value.trim());
+              await auth.signUp(emailInput.value.trim(), pass.input.value, nameInput.value.trim());
               emailConfirmed = true;
               codeWrap.hidden = false;
               codeInput.required = true;
-              passInput.closest('.field').hidden = true;
+              pass.field.hidden = true;
               nameInput.closest('.field').hidden = true;
               submit.disabled = false;
               submit.textContent = 'Verify & continue';
@@ -36,7 +36,7 @@ export function SignupPage(app) {
               return;
             }
             await auth.confirmSignUp(emailInput.value.trim(), codeInput.value.trim());
-            await auth.signIn(emailInput.value.trim(), passInput.value).catch(() => null);
+            await auth.signIn(emailInput.value.trim(), pass.input.value).catch(() => null);
             toast('Welcome to LineLess.', 'success');
             navigate('/onboarding');
           } catch (err) {
@@ -48,7 +48,7 @@ export function SignupPage(app) {
       },
         h('div', { class: 'field' }, h('label', { for: 'su-name' }, 'Name'), nameInput),
         h('div', { class: 'field' }, h('label', { for: 'su-email' }, 'Work email'), emailInput),
-        h('div', { class: 'field' }, h('label', { for: 'su-pass' }, 'Password (min 8 chars)'), passInput),
+        pass.field,
         codeWrap,
         submit,
       ),
