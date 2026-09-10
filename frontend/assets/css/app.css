@@ -317,6 +317,54 @@ input[aria-invalid="true"] { border-color: var(--danger); }
   text-decoration: underline; cursor: pointer; text-underline-offset: 2px;
 }
 .link-btn:hover { color: var(--accent-strong); }
+.link-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ---- password requirements checklist / strength / confirmation --------- */
+.pw-aids {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-4);
+}
+.pw-rules {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 5px;
+  font-size: var(--fs-sm); color: var(--text-muted);
+}
+.pw-rule { display: flex; align-items: center; gap: 8px; }
+.pw-rule svg { flex: none; color: currentColor; }
+.pw-rule--met { color: var(--success); }
+.pw-strength {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--fs-sm); color: var(--text-muted);
+}
+.pw-strength strong { font-weight: 650; }
+.pw-strength--weak { color: var(--danger); }
+.pw-strength--fair { color: var(--warning); }
+.pw-strength--strong { color: var(--success); }
+.pw-strength__bar { display: inline-flex; gap: 3px; }
+.pw-strength__seg {
+  width: 22px; height: 4px; border-radius: 999px;
+  background: var(--border-strong);
+}
+.pw-strength__seg--on { background: currentColor; }
+.pw-match {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--fs-sm); color: var(--text-muted);
+}
+.pw-match--ok { color: var(--success); }
+.pw-match--err { color: var(--danger); }
+
+/* Inline form-level error (role=alert) for auth screens. */
+.form-alert {
+  display: block;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-3);
+}
+.form-alert[hidden] { display: none; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn:not(:disabled):active { transform: translateY(1px); }
 .btn--primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-xs); }

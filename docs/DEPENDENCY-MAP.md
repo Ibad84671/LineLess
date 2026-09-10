@@ -73,6 +73,7 @@
 - auth.js
 - dom.js
 - icons.js
+- password-policy.js
 - router.js
 
 ## views/notfound.js

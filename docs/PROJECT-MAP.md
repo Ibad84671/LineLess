@@ -67,6 +67,7 @@ vs-code/  [node project]
 │   │       ├── dom.js
 │   │       ├── icons.js
 │   │       ├── main.js
+│   │       ├── password-policy.js
 │   │       ├── router.js
 │   │       ├── theme.js
 │   │       ├── topbar.js
